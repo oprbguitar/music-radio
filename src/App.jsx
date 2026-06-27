@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Download,
+  ExternalLink,
   Globe2,
   Heart,
   History,
@@ -9,7 +10,6 @@ import {
   ListMusic,
   Menu,
   Moon,
-  MoreVertical,
   Music2,
   Pause,
   Play,
@@ -28,6 +28,9 @@ import {
 import { filters, tracks } from "./data/tracks";
 import { durationToSeconds, formatTime } from "./utils/time";
 
+const DRIVE_AUDIO_WARNING =
+  "No se pudo reproducir este audio desde Drive. Puedes abrirlo en Drive o descargarlo.";
+
 const copy = {
   es: {
     subtitle: "Archivo personal de música creada con IA",
@@ -38,6 +41,12 @@ const copy = {
     startRadio: "Iniciar Radio",
     stopRadio: "Pausar Radio",
     customRadio: "Personalizar Radio",
+    audioUnavailable: "Audio no disponible",
+    driveWarning: DRIVE_AUDIO_WARNING,
+    listen: "Escuchar",
+    download: "Descargar",
+    openDrive: "Abrir en Drive",
+    openSuno: "Abrir en Suno",
     explore: "Explorar canciones",
     search: "Buscar canciones o etiquetas...",
     recent: "Actividad reciente",
@@ -59,6 +68,12 @@ const copy = {
     startRadio: "Start Radio",
     stopRadio: "Pause Radio",
     customRadio: "Customize Radio",
+    audioUnavailable: "Audio unavailable",
+    driveWarning: DRIVE_AUDIO_WARNING,
+    listen: "Listen",
+    download: "Download",
+    openDrive: "Open Drive",
+    openSuno: "Open Suno",
     explore: "Explore songs",
     search: "Search songs or tags...",
     recent: "Recent activity",
@@ -75,6 +90,10 @@ const copy = {
 
 const sidebarIcons = [Sparkles, Library, Heart, ListMusic, Download, History, Settings];
 const bottomIcons = [Home, Library, Radio, Download, Settings];
+
+function hasPlayableUrl(track) {
+  return /^https?:\/\//.test(track.audioUrl ?? "");
+}
 
 function useStoredState(key, initialValue) {
   const [value, setValue] = useState(() => {
@@ -187,6 +206,8 @@ function Waveform() {
 function CircularPlayer({
   track,
   isPlaying,
+  canPlay,
+  playbackWarning,
   onToggle,
   onNext,
   onPrevious,
@@ -219,8 +240,10 @@ function CircularPlayer({
           </button>
         </div>
         <p className="track-meta">
-          {track.genre} · {track.subgenre} · {track.mood} · {track.tags[0]}
+          {track.genre} · {track.subgenre} · {track.mood} · {track.language}
         </p>
+        {!canPlay && <p className="player-warning">{t.audioUnavailable}</p>}
+        {playbackWarning && <p className="player-warning">{playbackWarning}</p>}
         <Waveform />
         <div className="time-row">
           <span>{formatTime(currentTime)}</span>
@@ -233,7 +256,13 @@ function CircularPlayer({
           <button className="touch-button circle-control" type="button" onClick={onPrevious} aria-label="Anterior">
             <SkipBack size={28} fill="currentColor" />
           </button>
-          <button className="play-control" type="button" onClick={onToggle} aria-label="Reproducir o pausar">
+          <button
+            className="play-control"
+            type="button"
+            onClick={onToggle}
+            disabled={!canPlay}
+            aria-label="Reproducir o pausar"
+          >
             {isPlaying ? <Pause size={40} fill="currentColor" /> : <Play size={38} fill="currentColor" />}
           </button>
           <button className="touch-button circle-control" type="button" onClick={onNext} aria-label="Siguiente">
@@ -275,7 +304,7 @@ function RadioCard({ radioMode, onToggleRadio, t }) {
   );
 }
 
-function TrackList({ items, selectedId, onSelect, favorites, onFavorite }) {
+function TrackList({ items, selectedId, onSelect, onListen, favorites, onFavorite, t }) {
   return (
     <div className="track-list">
       {items.map((track) => (
@@ -285,27 +314,40 @@ function TrackList({ items, selectedId, onSelect, favorites, onFavorite }) {
             <span>
               <strong>{track.title}</strong>
               <small>
-                {track.genre} · {track.subgenre}
+                {track.genre} · {track.mood} · {track.language}
               </small>
             </span>
           </button>
           <div className="track-actions">
-            <button className="mini-play" type="button" onClick={() => onSelect(track)} aria-label="Seleccionar">
+            <button
+              className="track-action listen-action"
+              type="button"
+              onClick={() => onListen(track)}
+              disabled={!hasPlayableUrl(track)}
+              aria-label={hasPlayableUrl(track) ? t.listen : t.audioUnavailable}
+            >
               <Play size={18} fill="currentColor" />
+              <span>{hasPlayableUrl(track) ? t.listen : t.audioUnavailable}</span>
             </button>
-            <a className="icon-link desktop-only" href={track.downloadUrl} download aria-label="Descargar">
-              <Download size={20} />
+            <a className="track-action" href={track.downloadUrl} download>
+              <Download size={18} />
+              <span>{t.download}</span>
+            </a>
+            <a className="track-action" href={track.driveUrl} target="_blank" rel="noreferrer">
+              <ExternalLink size={18} />
+              <span>{t.openDrive}</span>
+            </a>
+            <a className="track-action" href={track.sunoUrl} target="_blank" rel="noreferrer">
+              <Music2 size={18} />
+              <span>{t.openSuno}</span>
             </a>
             <button
-              className={favorites.includes(track.id) ? "icon-link liked" : "icon-link"}
+              className={favorites.includes(track.id) ? "track-action liked" : "track-action"}
               type="button"
               onClick={() => onFavorite(track.id)}
-              aria-label="Favorito"
             >
               <Heart size={18} fill="currentColor" />
-            </button>
-            <button className="icon-link" type="button" aria-label="Mas opciones">
-              <MoreVertical size={20} />
+              <span>Favorito</span>
             </button>
           </div>
         </article>
@@ -322,16 +364,11 @@ function ExplorePanel({
   activeFilter,
   setActiveFilter,
   onSelect,
+  onListen,
   favorites,
   onFavorite,
   t,
 }) {
-  const localizedFilters = filters.map((filter) => {
-    if (filter === "Todas") return t.all;
-    if (filter === "Más") return t.more;
-    return filter;
-  });
-
   return (
     <section className="explore-panel">
       <div className="panel-heading">
@@ -346,7 +383,7 @@ function ExplorePanel({
             className={activeFilter === filter ? "chip active" : "chip"}
             onClick={() => setActiveFilter(filter)}
           >
-            {localizedFilters[index]}
+            {index === 0 ? t.all : filter}
           </button>
         ))}
       </div>
@@ -359,8 +396,10 @@ function ExplorePanel({
         items={visibleTracks}
         selectedId={selectedTrack.id}
         onSelect={onSelect}
+        onListen={onListen}
         favorites={favorites}
         onFavorite={onFavorite}
+        t={t}
       />
     </section>
   );
@@ -368,9 +407,9 @@ function ExplorePanel({
 
 function RecentActivity({ t }) {
   const items = [
-    ["Mañana se Derrumba", "Reproducida hace 2 min"],
-    ["Sombras del Asfalto", "Descargada hace 1 hr"],
-    ["Latidos de Concreto", "Añadida a Favoritos"],
+    [tracks[0].title, "Nueva canción destacada"],
+    [tracks[1].title, "Disponible desde Drive"],
+    [tracks[2].title, "Creada con Suno AI"],
   ];
 
   return (
@@ -411,12 +450,14 @@ export default function App() {
   const [selectedTrack, setSelectedTrack] = useState(tracks[0]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [radioMode, setRadioMode] = useState(false);
+  const [playbackWarning, setPlaybackWarning] = useState("");
+  const [failedTrackIds, setFailedTrackIds] = useState([]);
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("Todas");
   const [currentTime, setCurrentTime] = useState(84);
   const [darkMode, setDarkMode] = useStoredState("oprbguitar-night-mode", true);
   const [language, setLanguage] = useStoredState("oprbguitar-language", "es");
-  const [favorites, setFavorites] = useStoredState("oprbguitar-favorites", ["manana-se-derrumba"]);
+  const [favorites, setFavorites] = useStoredState("oprbguitar-favorites", ["rezale-al-amor"]);
   const t = copy[language];
 
   const visibleTracks = useMemo(() => {
@@ -424,11 +465,8 @@ export default function App() {
     return tracks.filter((track) => {
       const filterMatch =
         activeFilter === "Todas" ||
-        track.genre === activeFilter ||
-        track.subgenre === activeFilter ||
-        (activeFilter === "Rock" && track.subgenre.includes("Rock")) ||
-        (activeFilter === "Más" && true);
-      const haystack = [track.title, track.genre, track.subgenre, track.mood, ...track.tags]
+        track.genre === activeFilter;
+      const haystack = [track.title, track.genre, track.subgenre, track.mood, track.language, ...track.tags]
         .join(" ")
         .toLowerCase();
       return filterMatch && (!cleanQuery || haystack.includes(cleanQuery));
@@ -438,17 +476,44 @@ export default function App() {
   const selectTrack = (track) => {
     setSelectedTrack(track);
     setCurrentTime(0);
+    setPlaybackWarning("");
+  };
+
+  const listenToTrack = (track) => {
+    selectTrack(track);
+    if (!hasPlayableUrl(track)) {
+      setIsPlaying(false);
+      setPlaybackWarning(t.audioUnavailable);
+      return;
+    }
     setIsPlaying(true);
   };
 
-  const nextTrack = () => {
+  const findNextTrack = (direction = 1, skipFailed = false) => {
     const index = tracks.findIndex((track) => track.id === selectedTrack.id);
-    selectTrack(tracks[(index + 1) % tracks.length]);
+    for (let step = 1; step <= tracks.length; step += 1) {
+      const candidate = tracks[(index + step * direction + tracks.length) % tracks.length];
+      if (hasPlayableUrl(candidate) && (!skipFailed || !failedTrackIds.includes(candidate.id))) {
+        return candidate;
+      }
+    }
+    return null;
+  };
+
+  const nextTrack = (skipFailed = false) => {
+    const next = findNextTrack(1, skipFailed);
+    if (!next) {
+      setIsPlaying(false);
+      setRadioMode(false);
+      setPlaybackWarning(t.audioUnavailable);
+      return;
+    }
+    listenToTrack(next);
   };
 
   const previousTrack = () => {
-    const index = tracks.findIndex((track) => track.id === selectedTrack.id);
-    selectTrack(tracks[(index - 1 + tracks.length) % tracks.length]);
+    const previous = findNextTrack(-1);
+    if (previous) listenToTrack(previous);
   };
 
   const toggleFavorite = (trackId = selectedTrack.id) => {
@@ -460,12 +525,25 @@ export default function App() {
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    if (!hasPlayableUrl(selectedTrack)) {
+      audio.pause();
+      setIsPlaying(false);
+      setPlaybackWarning(t.audioUnavailable);
+      return;
+    }
     if (isPlaying) {
-      audio.play().catch(() => setIsPlaying(false));
+      audio.play().catch(() => {
+        setIsPlaying(false);
+        setPlaybackWarning(t.driveWarning);
+        setFailedTrackIds((items) => (items.includes(selectedTrack.id) ? items : [...items, selectedTrack.id]));
+        if (radioMode) {
+          window.setTimeout(() => nextTrack(true), 250);
+        }
+      });
     } else {
       audio.pause();
     }
-  }, [isPlaying, selectedTrack]);
+  }, [isPlaying, selectedTrack, radioMode, t.audioUnavailable, t.driveWarning]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = darkMode ? "dark" : "darker";
@@ -473,6 +551,7 @@ export default function App() {
 
   const duration = durationToSeconds(selectedTrack.duration);
   const progress = duration ? Math.min(100, (currentTime / duration) * 100) : 0;
+  const canPlaySelected = hasPlayableUrl(selectedTrack);
 
   return (
     <div className="app">
@@ -491,8 +570,10 @@ export default function App() {
           <CircularPlayer
             track={selectedTrack}
             isPlaying={isPlaying}
+            canPlay={canPlaySelected}
+            playbackWarning={playbackWarning}
             onToggle={() => setIsPlaying((value) => !value)}
-            onNext={nextTrack}
+            onNext={() => nextTrack()}
             onPrevious={previousTrack}
             currentTime={currentTime}
             duration={selectedTrack.duration}
@@ -506,8 +587,17 @@ export default function App() {
           <RadioCard
             radioMode={radioMode}
             onToggleRadio={() => {
-              setRadioMode((value) => !value);
-              setIsPlaying(true);
+              if (radioMode) {
+                setRadioMode(false);
+                setIsPlaying(false);
+                return;
+              }
+              setRadioMode(true);
+              const nextPlayable = hasPlayableUrl(selectedTrack) && !failedTrackIds.includes(selectedTrack.id)
+                ? selectedTrack
+                : findNextTrack(1, true);
+              if (nextPlayable) listenToTrack(nextPlayable);
+              else setPlaybackWarning(t.audioUnavailable);
             }}
             t={t}
           />
@@ -519,6 +609,7 @@ export default function App() {
             activeFilter={activeFilter}
             setActiveFilter={setActiveFilter}
             onSelect={selectTrack}
+            onListen={listenToTrack}
             favorites={favorites}
             onFavorite={toggleFavorite}
             t={t}
@@ -539,8 +630,14 @@ export default function App() {
         ref={audioRef}
         src={selectedTrack.audioUrl}
         onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        onError={() => {
+          setIsPlaying(false);
+          setPlaybackWarning(t.driveWarning);
+          setFailedTrackIds((items) => (items.includes(selectedTrack.id) ? items : [...items, selectedTrack.id]));
+          if (radioMode) nextTrack(true);
+        }}
         onEnded={() => {
-          if (radioMode) nextTrack();
+          if (radioMode) nextTrack(true);
           else setIsPlaying(false);
         }}
       />
