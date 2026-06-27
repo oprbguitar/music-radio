@@ -201,4 +201,3 @@ export const tracks = [
   },
 ];
 
-export const filters = ["Todas", ...Array.from(new Set(tracks.map((track) => track.genre)))];

@@ -1,29 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Download,
   Globe2,
-  Heart,
-  History,
-  Home,
-  Library,
-  ListMusic,
-  Menu,
   Moon,
-  Music2,
   Pause,
   Play,
   Radio,
-  Repeat2,
-  Search,
-  Settings,
-  Shuffle,
   SkipBack,
   SkipForward,
-  Sparkles,
   Sun,
-  Volume2,
 } from "lucide-react";
-import { filters, tracks } from "./data/tracks";
+import { tracks } from "./data/tracks";
 import { durationToSeconds, formatTime } from "./utils/time";
 
 const AUDIO_SOURCE_WARNING =
@@ -37,25 +23,15 @@ const copy = {
     radio: "Modo Radio",
     radioActive: "Radio aleatoria activa",
     radioText: "Reproducción continua de canciones que te gustan. Siempre algo nuevo sonando.",
-    startRadio: "Iniciar radio aleatoria",
+    startRadio: "Reproducir Radio",
     stopRadio: "Detener radio",
-    customRadio: "Personalizar Radio",
     audioUnavailable: "Audio no disponible",
     audioWarning: AUDIO_SOURCE_WARNING,
     listen: "Escuchar",
-    download: "Descargar",
-    openSuno: "Abrir en Suno",
     explore: "Explorar canciones",
-    search: "Buscar canciones o etiquetas...",
-    recent: "Actividad reciente",
-    all: "Todas",
-    more: "Más",
-    seeAll: "Ver todo",
     footerLeft: "Las máquinas crean.",
     footerAccent: "Tú sientes.",
     created: "Creado por",
-    nav: ["Explorar", "Biblioteca", "Radio", "Descargas", "Ajustes"],
-    side: ["Explorar", "Mi Biblioteca", "Favoritos", "Mis Playlists", "Descargas", "Historial", "Ajustes"],
   },
   en: {
     subtitle: "Personal archive of AI-created music",
@@ -64,30 +40,17 @@ const copy = {
     radio: "Radio Mode",
     radioActive: "Random radio active",
     radioText: "Continuous playback of songs you like. Always something new playing.",
-    startRadio: "Start random radio",
+    startRadio: "Play Radio",
     stopRadio: "Stop radio",
-    customRadio: "Customize Radio",
     audioUnavailable: "Audio unavailable",
     audioWarning: AUDIO_SOURCE_WARNING,
     listen: "Listen",
-    download: "Download",
-    openSuno: "Open Suno",
     explore: "Explore songs",
-    search: "Search songs or tags...",
-    recent: "Recent activity",
-    all: "All",
-    more: "More",
-    seeAll: "See all",
     footerLeft: "Machines create.",
     footerAccent: "You feel.",
     created: "Created by",
-    nav: ["Explore", "Library", "Radio", "Downloads", "Settings"],
-    side: ["Explore", "My Library", "Favorites", "My Playlists", "Downloads", "History", "Settings"],
   },
 };
-
-const sidebarIcons = [Sparkles, Library, Heart, ListMusic, Download, History, Settings];
-const bottomIcons = [Home, Library, Radio, Download, Settings];
 
 function hasPlayableUrl(track) {
   return /^https?:\/\//.test(track.audioUrl ?? "");
@@ -104,6 +67,10 @@ function getRandomPlayableTrack(currentTrackId, excludedIds = []) {
       : playableTracks;
 
   return candidates[Math.floor(Math.random() * candidates.length)] ?? playableTracks[0];
+}
+
+function getInitialTrack() {
+  return getRandomPlayableTrack(null) ?? tracks[0];
 }
 
 function useStoredState(key, initialValue, migrateFrom = []) {
@@ -138,9 +105,6 @@ function BrandMark() {
 function Header({ neonMode, setNeonMode, language, setLanguage, t }) {
   return (
     <header className="header">
-      <button className="mobile-menu touch-button" aria-label="Abrir menu">
-        <Menu size={22} />
-      </button>
       <div className="brand">
         <BrandMark />
         <div>
@@ -184,22 +148,6 @@ function Header({ neonMode, setNeonMode, language, setLanguage, t }) {
   );
 }
 
-function Sidebar({ labels }) {
-  return (
-    <aside className="sidebar" aria-label="Desktop navigation">
-      {labels.map((label, index) => {
-        const Icon = sidebarIcons[index];
-        return (
-          <button className={index === 0 ? "side-item active" : "side-item"} type="button" key={label}>
-            <Icon size={25} />
-            <span>{label}</span>
-          </button>
-        );
-      })}
-    </aside>
-  );
-}
-
 function Waveform() {
   return (
     <div className="waveform" aria-hidden="true">
@@ -218,15 +166,8 @@ function CircularPlayer({
   onToggle,
   onNext,
   onPrevious,
-  onShuffle,
-  repeatOne,
-  onToggleRepeat,
-  volume,
-  onVolume,
   currentTime,
   duration,
-  isFavorite,
-  onFavorite,
   t,
 }) {
   return (
@@ -239,14 +180,6 @@ function CircularPlayer({
         <span className="now-badge">{t.now}</span>
         <div className="title-row">
           <h2>{track.title}</h2>
-          <button
-            className={isFavorite ? "favorite active touch-button" : "favorite touch-button"}
-            type="button"
-            onClick={onFavorite}
-            aria-label="Favorito"
-          >
-            <Heart size={26} fill="currentColor" />
-          </button>
         </div>
         <p className="track-meta">
           {track.genre} · {track.subgenre} · {track.mood} · {track.language}
@@ -259,14 +192,6 @@ function CircularPlayer({
           <span>{duration}</span>
         </div>
         <div className="controls">
-          <button
-            className="touch-button ghost-control"
-            type="button"
-            onClick={onShuffle}
-            aria-label="Reproducir aleatoria"
-          >
-            <Shuffle size={23} />
-          </button>
           <button className="touch-button circle-control" type="button" onClick={onPrevious} aria-label="Anterior">
             <SkipBack size={28} fill="currentColor" />
           </button>
@@ -283,34 +208,13 @@ function CircularPlayer({
           <button className="touch-button circle-control" type="button" onClick={onNext} aria-label="Siguiente">
             <SkipForward size={28} fill="currentColor" />
           </button>
-          <button
-            className={repeatOne ? "touch-button ghost-control active" : "touch-button ghost-control"}
-            type="button"
-            onClick={onToggleRepeat}
-            aria-label="Repetir canción"
-            aria-pressed={repeatOne}
-          >
-            <Repeat2 size={23} />
-          </button>
-        </div>
-        <div className="volume">
-          <Volume2 size={19} />
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={Math.round(volume * 100)}
-            onChange={(event) => onVolume(Number(event.target.value) / 100)}
-            aria-label="Volumen"
-          />
-          <Volume2 size={22} />
         </div>
       </div>
     </section>
   );
 }
 
-function TrackList({ items, selectedId, isPlaying, onSelect, onListen, favorites, onFavorite, t }) {
+function TrackList({ items, selectedId, isPlaying, onListen, t }) {
   return (
     <div className="track-list">
       {items.map((track) => {
@@ -318,7 +222,7 @@ function TrackList({ items, selectedId, isPlaying, onSelect, onListen, favorites
         const isPlayingThis = isCurrent && isPlaying;
         return (
         <article className={isCurrent ? "track-row active" : "track-row"} key={track.id}>
-          <button className="track-main" type="button" onClick={() => onSelect(track)}>
+          <div className="track-main">
             <img src={track.cover} alt="" />
             <span>
               <strong>{track.title}</strong>
@@ -326,7 +230,7 @@ function TrackList({ items, selectedId, isPlaying, onSelect, onListen, favorites
                 {track.genre} · {track.mood} · {track.language}
               </small>
             </span>
-          </button>
+          </div>
           <div className="track-actions">
             <button
               className={isPlayingThis ? "track-action listen-action playing" : "track-action listen-action"}
@@ -340,24 +244,6 @@ function TrackList({ items, selectedId, isPlaying, onSelect, onListen, favorites
               {isPlayingThis ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
               <span>{hasPlayableUrl(track) ? (isPlayingThis ? "Pausar" : t.listen) : t.audioUnavailable}</span>
             </button>
-            <a className="track-action" href={track.downloadUrl} download>
-              <Download size={18} />
-              <span>{t.download}</span>
-            </a>
-            {track.sunoUrl && (
-              <a className="track-action" href={track.sunoUrl} target="_blank" rel="noreferrer">
-                <Music2 size={18} />
-                <span>{t.openSuno}</span>
-              </a>
-            )}
-            <button
-              className={favorites.includes(track.id) ? "track-action liked" : "track-action"}
-              type="button"
-              onClick={() => onFavorite(track.id)}
-            >
-              <Heart size={18} fill="currentColor" />
-              <span>Favorito</span>
-            </button>
           </div>
         </article>
         );
@@ -366,18 +252,18 @@ function TrackList({ items, selectedId, isPlaying, onSelect, onListen, favorites
   );
 }
 
-function RadioCard({ radioMode, onToggleRadio, t }) {
+function RadioCard({ isPlaying, onToggleRadio, t }) {
   return (
-    <section className={radioMode ? "radio-card active" : "radio-card"}>
+    <section className={isPlaying ? "radio-card active" : "radio-card"}>
       <div className="radio-icon">
         <Radio size={24} />
       </div>
       <div className="radio-copy">
-        <h2>{radioMode ? t.radioActive : t.radio}</h2>
+        <h2>{isPlaying ? t.radioActive : t.radio}</h2>
         <p>{t.radioText}</p>
         <button className="primary-button" type="button" onClick={onToggleRadio}>
-          {radioMode ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
-          {radioMode ? t.stopRadio : t.startRadio}
+          {isPlaying ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
+          <span>{isPlaying ? t.stopRadio : t.startRadio}</span>
         </button>
       </div>
     </section>
@@ -388,129 +274,93 @@ function ExplorePanel({
   selectedTrack,
   visibleTracks,
   isPlaying,
-  query,
-  setQuery,
-  activeFilter,
-  setActiveFilter,
-  onSelect,
   onListen,
-  favorites,
-  onFavorite,
   t,
 }) {
   return (
-    <section className="explore-panel">
-      <div className="chips" role="list" aria-label="Genre filters">
-        {filters.map((filter, index) => (
-          <button
-            key={filter}
-            type="button"
-            className={activeFilter === filter ? "chip active" : "chip"}
-            onClick={() => setActiveFilter(filter)}
-          >
-            {index === 0 ? t.all : filter}
-          </button>
-        ))}
-      </div>
-      <label className="search-box">
-        <span className="sr-only">{t.search}</span>
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={t.search}
-        />
-        <Search size={18} />
-      </label>
+    <section className="explore-panel" id="songs" aria-label={t.explore}>
       <TrackList
         items={visibleTracks}
         selectedId={selectedTrack.id}
         isPlaying={isPlaying}
-        onSelect={onSelect}
         onListen={onListen}
-        favorites={favorites}
-        onFavorite={onFavorite}
         t={t}
       />
     </section>
   );
 }
 
-function BottomNav({ labels }) {
-  const mobileItems = labels.slice(0, 3);
-  return (
-    <nav className="bottom-nav" aria-label="Mobile navigation">
-      {mobileItems.map((label, index) => {
-        const Icon = bottomIcons[index];
-        return (
-          <button className={index === 0 ? "active" : ""} type="button" key={label}>
-            <Icon size={22} />
-            <span>{label}</span>
-          </button>
-        );
-      })}
-    </nav>
-  );
-}
-
 export default function App() {
   const audioRef = useRef(null);
   const mediaHandlers = useRef({});
-  const [selectedTrack, setSelectedTrack] = useState(tracks[0]);
+  const [selectedTrack, setSelectedTrack] = useState(getInitialTrack);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [radioMode, setRadioMode] = useState(false);
+  const [radioMode, setRadioMode] = useState(true);
   const [radioStarted, setRadioStarted] = useState(false);
   const [autoBlocked, setAutoBlocked] = useState(false);
-  const [repeatOne, setRepeatOne] = useState(false);
-  const [volume, setVolume] = useState(0.68);
   const [playbackWarning, setPlaybackWarning] = useState("");
   const [failedTrackIds, setFailedTrackIds] = useState([]);
-  const [query, setQuery] = useState("");
-  const [activeFilter, setActiveFilter] = useState("Todas");
   const [currentTime, setCurrentTime] = useState(0);
   const [neonMode, setNeonMode] = useStoredState("oprbguitar-neon-mode", true, [
     "oprbguitar-night-mode",
   ]);
   const [language, setLanguage] = useStoredState("oprbguitar-language", "es");
-  const [favorites, setFavorites] = useStoredState("oprbguitar-favorites", ["rezale-al-amor"]);
   const t = copy[language];
 
-  const visibleTracks = useMemo(
-    () => {
-      const cleanQuery = query.trim().toLowerCase();
-      return tracks.filter((track) => {
-        const filterMatch = activeFilter === "Todas" || track.genre === activeFilter;
-        const haystack = [
-          track.title,
-          track.genre,
-          track.subgenre,
-          track.mood,
-          track.language,
-          ...track.tags,
-        ]
-          .join(" ")
-          .toLowerCase();
-        return filterMatch && (!cleanQuery || haystack.includes(cleanQuery));
-      });
-    },
-    [activeFilter, query],
-  );
+  const visibleTracks = useMemo(() => tracks.filter((track) => hasPlayableUrl(track)), []);
 
   const selectTrack = (track) => {
     setSelectedTrack(track);
     setCurrentTime(0);
     setPlaybackWarning("");
-    setRadioStarted(true);
+  };
+
+  const startTrack = async (track = selectedTrack) => {
+    if (!hasPlayableUrl(track)) {
+      setIsPlaying(false);
+      setPlaybackWarning(t.audioUnavailable);
+      return false;
+    }
+
+    selectTrack(track);
+    setFailedTrackIds((ids) => ids.filter((id) => id !== track.id));
+    setPlaybackWarning("");
+
+    const audio = audioRef.current;
+    if (!audio) {
+      setIsPlaying(true);
+      return true;
+    }
+
+    try {
+      if (audio.src !== track.audioUrl) {
+        audio.src = track.audioUrl;
+        audio.load();
+      }
+      await audio.play();
+      setAutoBlocked(false);
+      setIsPlaying(true);
+      return true;
+    } catch (error) {
+      if (error?.name === "NotAllowedError") {
+        setAutoBlocked(true);
+      } else {
+        setPlaybackWarning(t.audioUnavailable);
+      }
+      setIsPlaying(false);
+      return false;
+    }
   };
 
   const listenToTrack = (track) => {
-    selectTrack(track);
     if (!hasPlayableUrl(track)) {
       setIsPlaying(false);
       setPlaybackWarning(t.audioUnavailable);
       return;
     }
-    setIsPlaying(true);
+    setRadioMode(true);
+    setRadioStarted(true);
+    startTrack(track);
   };
 
   const playRandom = () => {
@@ -519,17 +369,20 @@ export default function App() {
     else setPlaybackWarning(t.audioUnavailable);
   };
 
-  // Main play/pause button: in radio mode the first press starts a random song.
+  // Main play/pause button: first user press unlocks sound and starts radio.
   const togglePlayback = () => {
     if (isPlaying) {
       setIsPlaying(false);
       return;
     }
-    if (radioMode && !radioStarted) {
-      playRandom();
+    if (!radioStarted) {
+      setRadioMode(true);
+      setRadioStarted(true);
+      if (hasPlayableUrl(selectedTrack)) startTrack(selectedTrack);
+      else playRandom();
       return;
     }
-    if (hasPlayableUrl(selectedTrack)) setIsPlaying(true);
+    if (hasPlayableUrl(selectedTrack)) startTrack(selectedTrack);
     else setPlaybackWarning(t.audioUnavailable);
   };
 
@@ -572,21 +425,14 @@ export default function App() {
   };
 
   const toggleRadioMode = () => {
-    if (radioMode) {
-      setRadioMode(false);
-      setRadioStarted(false);
+    if (isPlaying) {
       setIsPlaying(false);
       return;
     }
     setRadioMode(true);
     setRadioStarted(true);
-    playRandom();
-  };
-
-  const toggleFavorite = (trackId = selectedTrack.id) => {
-    setFavorites((items) =>
-      items.includes(trackId) ? items.filter((id) => id !== trackId) : [...items, trackId],
-    );
+    if (hasPlayableUrl(selectedTrack)) startTrack(selectedTrack);
+    else playRandom();
   };
 
   useEffect(() => {
@@ -628,13 +474,9 @@ export default function App() {
     document.documentElement.dataset.theme = neonMode ? "neon" : "calm";
   }, [neonMode]);
 
-  useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = volume;
-  }, [volume, selectedTrack]);
-
   // Keep the latest callbacks available to the (once-registered) media handlers.
   mediaHandlers.current = {
-    play: () => setIsPlaying(true),
+    play: () => startTrack(selectedTrack),
     pause: () => setIsPlaying(false),
     next: () => nextTrack(),
     previous: () => previousTrack(),
@@ -728,7 +570,6 @@ export default function App() {
         t={t}
       />
       <main className="dashboard">
-        <Sidebar labels={t.side} />
         <div className="primary-column">
           <CircularPlayer
             track={selectedTrack}
@@ -738,32 +579,18 @@ export default function App() {
             onToggle={togglePlayback}
             onNext={() => nextTrack()}
             onPrevious={previousTrack}
-            onShuffle={playRandom}
-            repeatOne={repeatOne}
-            onToggleRepeat={() => setRepeatOne((value) => !value)}
-            volume={volume}
-            onVolume={setVolume}
             currentTime={currentTime}
             duration={selectedTrack.duration}
-            isFavorite={favorites.includes(selectedTrack.id)}
-            onFavorite={() => toggleFavorite()}
             t={t}
           />
         </div>
         <div className="content-column">
-          <RadioCard radioMode={radioMode} onToggleRadio={toggleRadioMode} t={t} />
+          <RadioCard isPlaying={isPlaying} onToggleRadio={toggleRadioMode} t={t} />
           <ExplorePanel
             selectedTrack={selectedTrack}
             visibleTracks={visibleTracks}
             isPlaying={isPlaying}
-            query={query}
-            setQuery={setQuery}
-            activeFilter={activeFilter}
-            setActiveFilter={setActiveFilter}
-            onSelect={selectTrack}
             onListen={toggleTrack}
-            favorites={favorites}
-            onFavorite={toggleFavorite}
             t={t}
           />
         </div>
@@ -777,7 +604,6 @@ export default function App() {
           {t.created} <strong>oprguitar</strong>
         </span>
       </footer>
-      <BottomNav labels={t.nav} />
       <audio
         ref={audioRef}
         src={selectedTrack.audioUrl}
@@ -805,13 +631,7 @@ export default function App() {
           if (radioMode) nextTrack(true);
         }}
         onEnded={() => {
-          if (repeatOne && audioRef.current) {
-            audioRef.current.currentTime = 0;
-            audioRef.current.play().catch(() => setIsPlaying(false));
-            return;
-          }
-          if (radioMode) nextTrack(true);
-          else setIsPlaying(false);
+          nextTrack(true);
         }}
       />
       <div className="global-progress" style={{ "--progress": `${progress}%` }} />
