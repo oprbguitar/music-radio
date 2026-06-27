@@ -29,7 +29,7 @@ import { filters, tracks } from "./data/tracks";
 import { durationToSeconds, formatTime } from "./utils/time";
 
 const DRIVE_AUDIO_WARNING =
-  "No se pudo reproducir este audio desde Drive. Puedes abrirlo en Drive o descargarlo.";
+  "No se pudo reproducir este audio desde Supabase. Puedes abrirlo en Suno o descargarlo.";
 
 const copy = {
   es: {
@@ -333,10 +333,12 @@ function TrackList({ items, selectedId, onSelect, onListen, favorites, onFavorit
               <Download size={18} />
               <span>{t.download}</span>
             </a>
-            <a className="track-action" href={track.driveUrl} target="_blank" rel="noreferrer">
-              <ExternalLink size={18} />
-              <span>{t.openDrive}</span>
-            </a>
+            {track.driveUrl && (
+              <a className="track-action" href={track.driveUrl} target="_blank" rel="noreferrer">
+                <ExternalLink size={18} />
+                <span>{t.openDrive}</span>
+              </a>
+            )}
             <a className="track-action" href={track.sunoUrl} target="_blank" rel="noreferrer">
               <Music2 size={18} />
               <span>{t.openSuno}</span>
@@ -534,6 +536,9 @@ export default function App() {
     if (isPlaying) {
       audio.play().catch(() => {
         setIsPlaying(false);
+        if (!audio.error && audio.readyState > 0) {
+          return;
+        }
         setPlaybackWarning(t.driveWarning);
         setFailedTrackIds((items) => (items.includes(selectedTrack.id) ? items : [...items, selectedTrack.id]));
         if (radioMode) {
