@@ -14,7 +14,6 @@ import {
   Play,
   Radio,
   Repeat2,
-  Search,
   Settings,
   Shuffle,
   SkipBack,
@@ -236,9 +235,6 @@ function CircularPlayer({
       <div className="orbit-dot dot-one" />
       <div className="orbit-dot dot-two" />
       <div className="player-disc">
-        <div className="cover-wrap">
-          <img src={track.cover} alt="" />
-        </div>
         <span className="now-badge">{t.now}</span>
         <div className="title-row">
           <h2>{track.title}</h2>
@@ -313,24 +309,6 @@ function CircularPlayer({
   );
 }
 
-function RadioCard({ radioMode, onToggleRadio, t }) {
-  return (
-    <section className={radioMode ? "radio-card active" : "radio-card"}>
-      <div className="radio-icon">
-        <Radio size={30} />
-      </div>
-      <div>
-        <h2>{radioMode ? t.radioActive : t.radio}</h2>
-        <p>{t.radioText}</p>
-        <button className="primary-button" type="button" onClick={onToggleRadio}>
-          {radioMode ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
-          {radioMode ? t.stopRadio : t.startRadio}
-        </button>
-      </div>
-    </section>
-  );
-}
-
 function TrackList({ items, selectedId, isPlaying, onSelect, onListen, favorites, onFavorite, t }) {
   return (
     <div className="track-list">
@@ -391,8 +369,6 @@ function ExplorePanel({
   selectedTrack,
   visibleTracks,
   isPlaying,
-  query,
-  setQuery,
   activeFilter,
   setActiveFilter,
   onSelect,
@@ -403,10 +379,6 @@ function ExplorePanel({
 }) {
   return (
     <section className="explore-panel">
-      <div className="panel-heading">
-        <h2>{t.explore}</h2>
-        <a href="#songs">{t.seeAll}</a>
-      </div>
       <div className="chips" role="list" aria-label="Genre filters">
         {filters.map((filter, index) => (
           <button
@@ -419,11 +391,6 @@ function ExplorePanel({
           </button>
         ))}
       </div>
-      <label className="search-box">
-        <span className="sr-only">{t.search}</span>
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t.search} />
-        <Search size={22} />
-      </label>
       <TrackList
         items={visibleTracks}
         selectedId={selectedTrack.id}
@@ -434,30 +401,6 @@ function ExplorePanel({
         onFavorite={onFavorite}
         t={t}
       />
-    </section>
-  );
-}
-
-function RecentActivity({ t }) {
-  const items = [
-    [tracks[0].title, "Nueva canción destacada"],
-    [tracks[1].title, "Disponible desde Supabase"],
-    [tracks[2].title, "Creada con Suno AI"],
-  ];
-
-  return (
-    <section className="recent-card">
-      <h2>{t.recent}</h2>
-      {items.map(([title, detail], index) => (
-        <div className="recent-item" key={title}>
-          <img src={tracks[index + 1]?.cover ?? tracks[0].cover} alt="" />
-          <span>
-            <strong>{title}</strong>
-            <small>{detail}</small>
-          </span>
-        </div>
-      ))}
-      <button type="button">{t.seeAll}</button>
     </section>
   );
 }
@@ -480,15 +423,16 @@ function BottomNav({ labels }) {
 
 export default function App() {
   const audioRef = useRef(null);
+  const didInit = useRef(false);
   const [selectedTrack, setSelectedTrack] = useState(tracks[0]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [radioMode, setRadioMode] = useState(true);
   const [radioStarted, setRadioStarted] = useState(false);
+  const [autoBlocked, setAutoBlocked] = useState(false);
   const [repeatOne, setRepeatOne] = useState(false);
   const [volume, setVolume] = useState(0.68);
   const [playbackWarning, setPlaybackWarning] = useState("");
   const [failedTrackIds, setFailedTrackIds] = useState([]);
-  const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("Todas");
   const [currentTime, setCurrentTime] = useState(0);
   const [neonMode, setNeonMode] = useStoredState("oprbguitar-neon-mode", true, [
@@ -498,18 +442,10 @@ export default function App() {
   const [favorites, setFavorites] = useStoredState("oprbguitar-favorites", ["rezale-al-amor"]);
   const t = copy[language];
 
-  const visibleTracks = useMemo(() => {
-    const cleanQuery = query.trim().toLowerCase();
-    return tracks.filter((track) => {
-      const filterMatch =
-        activeFilter === "Todas" ||
-        track.genre === activeFilter;
-      const haystack = [track.title, track.genre, track.subgenre, track.mood, track.language, ...track.tags]
-        .join(" ")
-        .toLowerCase();
-      return filterMatch && (!cleanQuery || haystack.includes(cleanQuery));
-    });
-  }, [activeFilter, query]);
+  const visibleTracks = useMemo(
+    () => tracks.filter((track) => activeFilter === "Todas" || track.genre === activeFilter),
+    [activeFilter],
+  );
 
   const selectTrack = (track) => {
     setSelectedTrack(track);
@@ -602,17 +538,26 @@ export default function App() {
       return;
     }
     if (isPlaying) {
-      audio.play().catch(() => {
-        setIsPlaying(false);
-        if (!audio.error && audio.readyState > 0) {
-          return;
-        }
-        setPlaybackWarning(t.audioWarning);
-        setFailedTrackIds((items) => (items.includes(selectedTrack.id) ? items : [...items, selectedTrack.id]));
-        if (radioMode) {
-          window.setTimeout(() => nextTrack(true), 250);
-        }
-      });
+      audio.play()
+        .then(() => setAutoBlocked(false))
+        .catch((error) => {
+          // Browser blocked autoplay-with-sound: keep the song selected and
+          // ready, then start it on the first user interaction.
+          if (error && error.name === "NotAllowedError") {
+            setIsPlaying(false);
+            setAutoBlocked(true);
+            return;
+          }
+          setIsPlaying(false);
+          if (!audio.error && audio.readyState > 0) {
+            return;
+          }
+          setPlaybackWarning(t.audioWarning);
+          setFailedTrackIds((items) => (items.includes(selectedTrack.id) ? items : [...items, selectedTrack.id]));
+          if (radioMode) {
+            window.setTimeout(() => nextTrack(true), 250);
+          }
+        });
     } else {
       audio.pause();
     }
@@ -625,6 +570,38 @@ export default function App() {
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = volume;
   }, [volume, selectedTrack]);
+
+  // Radio is on by default: pick a random song on load and try to play it.
+  useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
+    const random = getRandomPlayableTrack(selectedTrack.id, []);
+    if (random) {
+      setSelectedTrack(random);
+      setCurrentTime(0);
+      setRadioStarted(true);
+      setIsPlaying(true);
+    }
+  }, []);
+
+  // If autoplay was blocked, start playback on the first user interaction.
+  useEffect(() => {
+    if (!autoBlocked) return;
+    const resume = () => {
+      const audio = audioRef.current;
+      if (!audio) return;
+      audio
+        .play()
+        .then(() => {
+          setIsPlaying(true);
+          setAutoBlocked(false);
+        })
+        .catch(() => {});
+    };
+    const events = ["pointerdown", "keydown", "touchstart"];
+    events.forEach((event) => document.addEventListener(event, resume));
+    return () => events.forEach((event) => document.removeEventListener(event, resume));
+  }, [autoBlocked]);
 
   const duration = durationToSeconds(selectedTrack.duration);
   const progress = duration ? Math.min(100, (currentTime / duration) * 100) : 0;
@@ -663,30 +640,12 @@ export default function App() {
             onFavorite={() => toggleFavorite()}
             t={t}
           />
-          <RecentActivity t={t} />
         </div>
         <div className="content-column">
-          <RadioCard
-            radioMode={radioMode}
-            onToggleRadio={() => {
-              if (radioMode) {
-                setRadioMode(false);
-                setIsPlaying(false);
-                return;
-              }
-              setRadioMode(true);
-              const nextPlayable = getRandomPlayableTrack(selectedTrack.id, failedTrackIds);
-              if (nextPlayable) listenToTrack(nextPlayable);
-              else setPlaybackWarning(t.audioUnavailable);
-            }}
-            t={t}
-          />
           <ExplorePanel
             selectedTrack={selectedTrack}
             visibleTracks={visibleTracks}
             isPlaying={isPlaying}
-            query={query}
-            setQuery={setQuery}
             activeFilter={activeFilter}
             setActiveFilter={setActiveFilter}
             onSelect={selectTrack}
