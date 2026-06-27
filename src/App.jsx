@@ -36,9 +36,10 @@ const copy = {
     neon: "Modo neón",
     now: "Reproduciendo ahora",
     radio: "Modo Radio",
+    radioActive: "Radio aleatoria activa",
     radioText: "Reproducción continua de canciones que te gustan. Siempre algo nuevo sonando.",
-    startRadio: "Iniciar Radio",
-    stopRadio: "Pausar Radio",
+    startRadio: "Iniciar radio aleatoria",
+    stopRadio: "Detener radio",
     customRadio: "Personalizar Radio",
     audioUnavailable: "Audio no disponible",
     audioWarning: AUDIO_SOURCE_WARNING,
@@ -62,9 +63,10 @@ const copy = {
     neon: "Neon mode",
     now: "Playing now",
     radio: "Radio Mode",
+    radioActive: "Random radio active",
     radioText: "Continuous playback of songs you like. Always something new playing.",
-    startRadio: "Start Radio",
-    stopRadio: "Pause Radio",
+    startRadio: "Start random radio",
+    stopRadio: "Stop radio",
     customRadio: "Customize Radio",
     audioUnavailable: "Audio unavailable",
     audioWarning: AUDIO_SOURCE_WARNING,
@@ -90,6 +92,19 @@ const bottomIcons = [Home, Library, Radio, Download, Settings];
 
 function hasPlayableUrl(track) {
   return /^https?:\/\//.test(track.audioUrl ?? "");
+}
+
+function getRandomPlayableTrack(currentTrackId, excludedIds = []) {
+  const excluded = new Set(excludedIds);
+  const playableTracks = tracks.filter((track) => hasPlayableUrl(track) && !excluded.has(track.id));
+  if (playableTracks.length === 0) return null;
+
+  const candidates =
+    playableTracks.length > 1
+      ? playableTracks.filter((track) => track.id !== currentTrackId)
+      : playableTracks;
+
+  return candidates[Math.floor(Math.random() * candidates.length)] ?? playableTracks[0];
 }
 
 function useStoredState(key, initialValue, migrateFrom = []) {
@@ -287,7 +302,7 @@ function RadioCard({ radioMode, onToggleRadio, t }) {
         <Radio size={30} />
       </div>
       <div>
-        <h2>{t.radio}</h2>
+        <h2>{radioMode ? t.radioActive : t.radio}</h2>
         <p>{t.radioText}</p>
         <button className="primary-button" type="button" onClick={onToggleRadio}>
           {radioMode ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
@@ -499,7 +514,9 @@ export default function App() {
   };
 
   const nextTrack = (skipFailed = false) => {
-    const next = findNextTrack(1, skipFailed);
+    const next = radioMode
+      ? getRandomPlayableTrack(selectedTrack.id, skipFailed ? failedTrackIds : [])
+      : findNextTrack(1, skipFailed);
     if (!next) {
       setIsPlaying(false);
       setRadioMode(false);
@@ -594,9 +611,7 @@ export default function App() {
                 return;
               }
               setRadioMode(true);
-              const nextPlayable = hasPlayableUrl(selectedTrack) && !failedTrackIds.includes(selectedTrack.id)
-                ? selectedTrack
-                : findNextTrack(1, true);
+              const nextPlayable = getRandomPlayableTrack(selectedTrack.id, failedTrackIds);
               if (nextPlayable) listenToTrack(nextPlayable);
               else setPlaybackWarning(t.audioUnavailable);
             }}
