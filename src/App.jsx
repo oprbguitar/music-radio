@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Globe2,
   Moon,
@@ -34,6 +34,10 @@ const copy = {
     audioUnavailable: "Audio no disponible",
     audioWarning: AUDIO_SOURCE_WARNING,
     libraryWarning: "No se pudo actualizar Supabase. Usando canciones guardadas.",
+    noAudio: "No se encontraron audios en Supabase Storage.",
+    refreshSongs: "Actualizar canciones",
+    refreshingSongs: "Actualizando canciones...",
+    loadedSongs: (count) => `${count} canciones cargadas`,
     listen: "Escuchar",
     explore: "Explorar canciones",
     footerLeft: "Las máquinas crean.",
@@ -52,6 +56,10 @@ const copy = {
     audioUnavailable: "Audio unavailable",
     audioWarning: AUDIO_SOURCE_WARNING,
     libraryWarning: "Could not refresh Supabase. Using saved songs.",
+    noAudio: "No audio files were found in Supabase Storage.",
+    refreshSongs: "Refresh songs",
+    refreshingSongs: "Refreshing songs...",
+    loadedSongs: (count) => `${count} songs loaded`,
     listen: "Listen",
     explore: "Explore songs",
     footerLeft: "Machines create.",
@@ -288,19 +296,32 @@ function ExplorePanel({
   visibleTracks,
   isPlaying,
   onListen,
+  onRefresh,
+  isRefreshing,
+  loadedCount,
   syncWarning,
   t,
 }) {
   return (
     <section className="explore-panel" id="songs" aria-label={t.explore}>
+      <div className="song-list-toolbar">
+        <span>{t.loadedSongs(loadedCount)}</span>
+        <button className="refresh-songs-button" type="button" onClick={onRefresh} disabled={isRefreshing}>
+          {isRefreshing ? t.refreshingSongs : t.refreshSongs}
+        </button>
+      </div>
       {syncWarning && <p className="library-warning">{syncWarning}</p>}
-      <TrackList
-        items={visibleTracks}
-        selectedId={selectedTrack.id}
-        isPlaying={isPlaying}
-        onListen={onListen}
-        t={t}
-      />
+      {visibleTracks.length > 0 ? (
+        <TrackList
+          items={visibleTracks}
+          selectedId={selectedTrack.id}
+          isPlaying={isPlaying}
+          onListen={onListen}
+          t={t}
+        />
+      ) : (
+        <p className="empty-songs">{t.noAudio}</p>
+      )}
     </section>
   );
 }
@@ -311,6 +332,7 @@ export default function App() {
   const [library, setLibrary] = useState(getInitialLibrary);
   const [syncStats, setSyncStats] = useState(() => getCachedSupabaseStats());
   const [syncWarning, setSyncWarning] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedTrack, setSelectedTrack] = useState(() => getInitialTrack(library.tracks));
   const [isPlaying, setIsPlaying] = useState(false);
   const [radioMode, setRadioMode] = useState(true);
@@ -327,56 +349,62 @@ export default function App() {
 
   const visibleTracks = useMemo(() => library.tracks.filter((track) => hasPlayableUrl(track)), [library.tracks]);
 
-  useEffect(() => {
-    let active = true;
-
-    const applySupabaseTracks = (supabaseTracks, supabaseStats) => {
-      const merged = mergeTrackLists(localTracks, supabaseTracks);
-      const nextStats = {
-        supabaseTracksLoaded: supabaseStats?.loaded ?? supabaseTracks.length,
-        cachedLocalFallbackTracks: localTracks.length,
-        totalTracksAvailable: merged.tracks.length,
-        duplicateTracksSkipped:
-          (supabaseStats?.duplicateTracksSkipped ?? 0) + merged.duplicateTracksSkipped,
-        invalidFilesIgnored: supabaseStats?.invalidFilesIgnored ?? 0,
-        fetchedAt: supabaseStats?.fetchedAt ?? new Date().toISOString(),
-      };
-
-      setLibrary(merged);
-      setSyncStats(nextStats);
-      window.__OPRBGUITAR_TRACK_STATS__ = nextStats;
-      setSyncWarning("");
-      setSelectedTrack((current) => {
-        const updatedCurrent = merged.tracks.find((track) => track.id === current.id);
-        return updatedCurrent ?? getInitialTrack(merged.tracks);
-      });
+  const applySupabaseTracks = useCallback((supabaseTracks, supabaseStats) => {
+    const dynamicLibrary = {
+      tracks: supabaseTracks,
+      duplicateTracksSkipped: supabaseStats?.duplicateTracksSkipped ?? 0,
+    };
+    const nextStats = {
+      supabaseTracksLoaded: supabaseStats?.loaded ?? supabaseTracks.length,
+      cachedLocalFallbackTracks: localTracks.length,
+      totalTracksAvailable: supabaseTracks.length,
+      duplicateTracksSkipped: supabaseStats?.duplicateTracksSkipped ?? 0,
+      invalidFilesIgnored: supabaseStats?.invalidFilesIgnored ?? 0,
+      fileNames: supabaseStats?.fileNames ?? supabaseTracks.map((track) => track.filename).filter(Boolean),
+      fetchedAt: supabaseStats?.fetchedAt ?? new Date().toISOString(),
     };
 
-    const refreshTracks = async (showWarning = false) => {
+    setLibrary(dynamicLibrary);
+    setSyncStats(nextStats);
+    window.__OPRBGUITAR_TRACK_STATS__ = nextStats;
+    setSyncWarning("");
+    setSelectedTrack((current) => {
+      const updatedCurrent = supabaseTracks.find((track) => track.id === current.id);
+      return updatedCurrent ?? getInitialTrack(supabaseTracks);
+    });
+  }, []);
+
+  const refreshTracks = useCallback(
+    async ({ showWarning = false, manual = false } = {}) => {
+      setIsRefreshing(true);
+      if (manual) setSyncWarning("");
       try {
         const result = await fetchSupabaseTracks();
-        if (!active) return;
         applySupabaseTracks(result.tracks, result.stats);
       } catch {
-        if (active && showWarning) {
+        if (showWarning || manual) {
           setSyncWarning(t.libraryWarning);
         }
+      } finally {
+        setIsRefreshing(false);
       }
-    };
+    },
+    [applySupabaseTracks, t.libraryWarning],
+  );
 
-    refreshTracks(false);
-    const refreshInterval = window.setInterval(() => refreshTracks(false), 5 * 60 * 1000);
+  useEffect(() => {
+    refreshTracks({ showWarning: false });
+    const refreshInterval = window.setInterval(() => refreshTracks({ showWarning: false }), 5 * 60 * 1000);
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") refreshTracks(true);
+      if (document.visibilityState === "visible") refreshTracks({ showWarning: true });
     };
     document.addEventListener("visibilitychange", refreshWhenVisible);
 
     return () => {
-      active = false;
       window.clearInterval(refreshInterval);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [t.libraryWarning]);
+  }, [refreshTracks]);
 
   const selectTrack = (track) => {
     setSelectedTrack(track);
@@ -671,6 +699,9 @@ export default function App() {
             visibleTracks={visibleTracks}
             isPlaying={isPlaying}
             onListen={toggleTrack}
+            onRefresh={() => refreshTracks({ showWarning: true, manual: true })}
+            isRefreshing={isRefreshing}
+            loadedCount={visibleTracks.length}
             syncWarning={syncWarning}
             t={t}
           />

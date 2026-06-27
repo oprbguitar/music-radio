@@ -691,6 +691,36 @@ img {
   color: #8994bd;
 }
 
+.song-list-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  color: #aab5d6;
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
+.refresh-songs-button {
+  min-height: 34px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(0, 217, 255, 0.28);
+  border-radius: 999px;
+  padding: 0 12px;
+  background: rgba(0, 217, 255, 0.08);
+  color: #eaf7ff;
+  font-size: 0.72rem;
+  font-weight: 900;
+  box-shadow: 0 0 calc(18px * var(--glow-strength)) rgba(0, 217, 255, 0.16);
+}
+
+.refresh-songs-button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
 .library-warning {
   flex: 0 0 auto;
   margin: 0 0 10px;
@@ -702,6 +732,18 @@ img {
   font-size: 0.76rem;
   font-weight: 800;
   line-height: 1.35;
+}
+
+.empty-songs {
+  display: grid;
+  place-items: center;
+  flex: 1 1 auto;
+  min-height: 180px;
+  margin: 0;
+  color: #c7d2f3;
+  font-size: 0.9rem;
+  font-weight: 850;
+  text-align: center;
 }
 
 .track-list {
