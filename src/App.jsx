@@ -328,6 +328,7 @@ function ExplorePanel({
 
 export default function App() {
   const audioRef = useRef(null);
+  const loadedUrlRef = useRef("");
   const mediaHandlers = useRef({});
   const [library, setLibrary] = useState(getInitialLibrary);
   const [syncStats, setSyncStats] = useState(() => getCachedSupabaseStats());
@@ -336,7 +337,6 @@ export default function App() {
   const [selectedTrack, setSelectedTrack] = useState(() => getInitialTrack(library.tracks));
   const [isPlaying, setIsPlaying] = useState(false);
   const [radioMode, setRadioMode] = useState(true);
-  const [radioStarted, setRadioStarted] = useState(false);
   const [autoBlocked, setAutoBlocked] = useState(false);
   const [playbackWarning, setPlaybackWarning] = useState("");
   const [failedTrackIds, setFailedTrackIds] = useState([]);
@@ -406,167 +406,117 @@ export default function App() {
     };
   }, [refreshTracks]);
 
-  const selectTrack = (track) => {
-    setSelectedTrack(track);
-    setCurrentTime(0);
-    setPlaybackWarning("");
-  };
-
-  const startTrack = async (track = selectedTrack) => {
+  // Single source of truth for playback: imperatively drive the <audio> element
+  // so rapid Next/Prev taps never race a declarative src binding or an effect.
+  const playTrack = (track) => {
     if (!hasPlayableUrl(track)) {
       setIsPlaying(false);
       setPlaybackWarning(t.audioUnavailable);
-      return false;
+      return;
     }
-
-    selectTrack(track);
-    setFailedTrackIds((ids) => ids.filter((id) => id !== track.id));
-    setPlaybackWarning("");
 
     const audio = audioRef.current;
+    setSelectedTrack(track);
+    setPlaybackWarning("");
+    setFailedTrackIds((ids) => ids.filter((id) => id !== track.id));
+
     if (!audio) {
       setIsPlaying(true);
-      return true;
+      return;
     }
 
-    try {
-      if (audio.src !== track.audioUrl) {
-        audio.src = track.audioUrl;
-        audio.load();
-      }
-      await audio.play();
-      setAutoBlocked(false);
+    // Only reload when the track really changes, so resume keeps its position.
+    if (loadedUrlRef.current !== track.audioUrl) {
+      loadedUrlRef.current = track.audioUrl;
+      audio.src = track.audioUrl;
+      audio.load();
+      setCurrentTime(0);
+    }
+
+    const attempt = audio.play();
+    if (attempt && typeof attempt.then === "function") {
+      attempt
+        .then(() => {
+          setAutoBlocked(false);
+          setIsPlaying(true);
+        })
+        .catch((error) => {
+          // Switching src or pausing aborts the pending play() — that's normal.
+          if (error && error.name === "AbortError") return;
+          if (error && error.name === "NotAllowedError") {
+            setAutoBlocked(true);
+            setIsPlaying(false);
+            return;
+          }
+          setFailedTrackIds((ids) => (ids.includes(track.id) ? ids : [...ids, track.id]));
+          setPlaybackWarning(t.audioWarning);
+          setIsPlaying(false);
+        });
+    } else {
       setIsPlaying(true);
-      return true;
-    } catch (error) {
-      if (error?.name === "NotAllowedError") {
-        setAutoBlocked(true);
-      } else {
-        setPlaybackWarning(t.audioUnavailable);
-      }
-      setIsPlaying(false);
-      return false;
     }
   };
 
-  const listenToTrack = (track) => {
-    if (!hasPlayableUrl(track)) {
-      setIsPlaying(false);
-      setPlaybackWarning(t.audioUnavailable);
+  const pausePlayback = () => {
+    audioRef.current?.pause();
+    setIsPlaying(false);
+  };
+
+  // Sequential navigation so every track is reachable going forward and back.
+  const findAdjacentTrack = (direction, skipFailed = false) => {
+    if (visibleTracks.length === 0) return null;
+    const index = visibleTracks.findIndex((track) => track.id === selectedTrack.id);
+    const startIndex = index >= 0 ? index : 0;
+    for (let step = 1; step <= visibleTracks.length; step += 1) {
+      const candidate =
+        visibleTracks[(startIndex + step * direction + visibleTracks.length) % visibleTracks.length];
+      if (hasPlayableUrl(candidate) && (!skipFailed || !failedTrackIds.includes(candidate.id))) {
+        return candidate;
+      }
+    }
+    // Everything else is marked failed — fall back to the first playable track.
+    return visibleTracks.find((track) => hasPlayableUrl(track)) ?? null;
+  };
+
+  const nextTrack = (skipFailed = false) => {
+    const next = findAdjacentTrack(1, skipFailed);
+    if (next) playTrack(next);
+    else setPlaybackWarning(t.audioUnavailable);
+  };
+
+  const previousTrack = () => {
+    const previous = findAdjacentTrack(-1);
+    if (previous) playTrack(previous);
+  };
+
+  // Main play/pause button.
+  const togglePlayback = () => {
+    if (isPlaying) {
+      pausePlayback();
       return;
     }
     setRadioMode(true);
-    setRadioStarted(true);
-    startTrack(track);
-  };
-
-  const playRandom = () => {
-    const next = getRandomPlayableTrack(visibleTracks, selectedTrack.id, failedTrackIds);
-    if (next) listenToTrack(next);
-    else setPlaybackWarning(t.audioUnavailable);
-  };
-
-  // Main play/pause button: first user press unlocks sound and starts radio.
-  const togglePlayback = () => {
-    if (isPlaying) {
-      setIsPlaying(false);
-      return;
-    }
-    if (!radioStarted) {
-      setRadioMode(true);
-      setRadioStarted(true);
-      if (hasPlayableUrl(selectedTrack)) startTrack(selectedTrack);
-      else playRandom();
-      return;
-    }
-    if (hasPlayableUrl(selectedTrack)) startTrack(selectedTrack);
-    else setPlaybackWarning(t.audioUnavailable);
+    playTrack(selectedTrack);
   };
 
   // Per-row button: toggles the current track, otherwise plays the tapped one.
   const toggleTrack = (track) => {
     if (track.id === selectedTrack.id && isPlaying) {
-      setIsPlaying(false);
+      pausePlayback();
       return;
     }
-    listenToTrack(track);
-  };
-
-  const findNextTrack = (direction = 1, skipFailed = false) => {
-    const index = visibleTracks.findIndex((track) => track.id === selectedTrack.id);
-    const startIndex = index >= 0 ? index : 0;
-    for (let step = 1; step <= visibleTracks.length; step += 1) {
-      const candidate = visibleTracks[(startIndex + step * direction + visibleTracks.length) % visibleTracks.length];
-      if (hasPlayableUrl(candidate) && (!skipFailed || !failedTrackIds.includes(candidate.id))) {
-        return candidate;
-      }
-    }
-    return null;
-  };
-
-  const nextTrack = (skipFailed = false) => {
-    const next = radioMode
-      ? getRandomPlayableTrack(visibleTracks, selectedTrack.id, skipFailed ? failedTrackIds : [])
-      : findNextTrack(1, skipFailed);
-    if (!next) {
-      setIsPlaying(false);
-      setRadioMode(false);
-      setPlaybackWarning(t.audioUnavailable);
-      return;
-    }
-    listenToTrack(next);
-  };
-
-  const previousTrack = () => {
-    const previous = findNextTrack(-1);
-    if (previous) listenToTrack(previous);
+    setRadioMode(true);
+    playTrack(track);
   };
 
   const toggleRadioMode = () => {
     if (isPlaying) {
-      setIsPlaying(false);
+      pausePlayback();
       return;
     }
     setRadioMode(true);
-    setRadioStarted(true);
-    if (hasPlayableUrl(selectedTrack)) startTrack(selectedTrack);
-    else playRandom();
+    playTrack(selectedTrack);
   };
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (!hasPlayableUrl(selectedTrack)) {
-      audio.pause();
-      setIsPlaying(false);
-      setPlaybackWarning(t.audioUnavailable);
-      return;
-    }
-    if (isPlaying) {
-      audio.play()
-        .then(() => setAutoBlocked(false))
-        .catch((error) => {
-          // Browser blocked autoplay-with-sound: keep the song selected and
-          // ready, then start it on the first user interaction.
-          if (error && error.name === "NotAllowedError") {
-            setIsPlaying(false);
-            setAutoBlocked(true);
-            return;
-          }
-          setIsPlaying(false);
-          if (!audio.error && audio.readyState > 0) {
-            return;
-          }
-          setPlaybackWarning(t.audioWarning);
-          setFailedTrackIds((items) => (items.includes(selectedTrack.id) ? items : [...items, selectedTrack.id]));
-          if (radioMode) {
-            window.setTimeout(() => nextTrack(true), 250);
-          }
-        });
-    } else {
-      audio.pause();
-    }
-  }, [isPlaying, selectedTrack, radioMode, t.audioUnavailable, t.audioWarning]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = neonMode ? "neon" : "calm";
@@ -584,8 +534,8 @@ export default function App() {
 
   // Keep the latest callbacks available to the (once-registered) media handlers.
   mediaHandlers.current = {
-    play: () => startTrack(selectedTrack),
-    pause: () => setIsPlaying(false),
+    play: () => playTrack(selectedTrack),
+    pause: () => pausePlayback(),
     next: () => nextTrack(),
     previous: () => previousTrack(),
     seek: (time) => {
@@ -718,7 +668,6 @@ export default function App() {
       </footer>
       <audio
         ref={audioRef}
-        src={selectedTrack.audioUrl}
         preload="metadata"
         playsInline
         onTimeUpdate={(event) => {
