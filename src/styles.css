@@ -327,14 +327,6 @@ img {
   background: rgba(65, 108, 255, 0.26);
 }
 
-.avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid rgba(0, 217, 255, 0.6);
-}
-
 .dashboard {
   display: flex;
   flex-direction: column;
@@ -466,7 +458,7 @@ img {
 }
 
 .favorite {
-  display: grid;
+  display: none;
   flex: 0 0 auto;
   place-items: center;
   border-radius: 50%;
@@ -527,10 +519,10 @@ img {
 
 .controls {
   display: grid;
-  grid-template-columns: repeat(2, 38px) 54px repeat(2, 38px);
+  grid-template-columns: 38px 54px 38px;
   align-items: center;
   width: auto;
-  gap: 6px;
+  gap: 10px;
   margin-top: 6px;
 }
 
@@ -551,6 +543,18 @@ img {
   cursor: not-allowed;
   opacity: 0.45;
   filter: grayscale(0.4);
+}
+
+/* Mobile keeps only the essential transport controls. */
+.ghost-control {
+  display: none;
+}
+
+.ghost-control.active {
+  color: var(--cyan);
+  background: rgba(0, 217, 255, 0.16);
+  border-color: rgba(0, 217, 255, 0.4);
+  filter: drop-shadow(0 0 10px rgba(0, 217, 255, 0.6));
 }
 
 .circle-control {
@@ -685,21 +689,6 @@ img {
   color: white;
   font-weight: 900;
   box-shadow: 0 12px 28px rgba(123, 53, 255, 0.46);
-}
-
-.secondary-action {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  min-height: 34px;
-  gap: 8px;
-  margin-top: 8px;
-  padding: 0 10px;
-  border-radius: 12px;
-  background: transparent;
-  color: #e4e7fb;
-  font-size: 0.84rem;
-  font-weight: 800;
 }
 
 .explore-panel {
@@ -898,6 +887,11 @@ img {
   box-shadow: 0 0 18px rgba(123, 53, 255, 0.42);
 }
 
+.listen-action.playing {
+  background: linear-gradient(145deg, var(--magenta), var(--violet));
+  box-shadow: 0 0 22px rgba(255, 63, 210, 0.6);
+}
+
 .listen-action span {
   display: none;
 }
@@ -1054,13 +1048,21 @@ img {
     font-size: 0.78rem;
   }
 
-  .avatar {
-    width: 42px;
-    height: 42px;
-  }
-
   .now-badge {
     display: block;
+  }
+
+  .favorite {
+    display: grid;
+  }
+
+  .ghost-control {
+    display: grid;
+  }
+
+  .controls {
+    grid-template-columns: repeat(2, 38px) 54px repeat(2, 38px);
+    gap: 6px;
   }
 
   .radio-card {
@@ -1069,10 +1071,6 @@ img {
 
   .radio-card p {
     display: block;
-  }
-
-  .secondary-action {
-    display: inline-flex;
   }
 
   .explore-panel {

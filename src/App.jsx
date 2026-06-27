@@ -19,7 +19,6 @@ import {
   Shuffle,
   SkipBack,
   SkipForward,
-  SlidersHorizontal,
   Sparkles,
   Sun,
   Volume2,
@@ -180,11 +179,6 @@ function Header({ neonMode, setNeonMode, language, setLanguage, t }) {
             EN
           </button>
         </div>
-        <img
-          className="avatar"
-          alt="OPRBguitar avatar"
-          src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=160&q=80"
-        />
       </div>
     </header>
   );
@@ -224,6 +218,11 @@ function CircularPlayer({
   onToggle,
   onNext,
   onPrevious,
+  onShuffle,
+  repeatOne,
+  onToggleRepeat,
+  volume,
+  onVolume,
   currentTime,
   duration,
   isFavorite,
@@ -263,7 +262,12 @@ function CircularPlayer({
           <span>{duration}</span>
         </div>
         <div className="controls">
-          <button className="touch-button ghost-control" type="button" aria-label="Aleatorio">
+          <button
+            className="touch-button ghost-control"
+            type="button"
+            onClick={onShuffle}
+            aria-label="Reproducir aleatoria"
+          >
             <Shuffle size={23} />
           </button>
           <button className="touch-button circle-control" type="button" onClick={onPrevious} aria-label="Anterior">
@@ -274,20 +278,34 @@ function CircularPlayer({
             type="button"
             onClick={onToggle}
             disabled={!canPlay}
-            aria-label="Reproducir o pausar"
+            aria-label={isPlaying ? "Pausar" : "Reproducir"}
+            aria-pressed={isPlaying}
           >
             {isPlaying ? <Pause size={40} fill="currentColor" /> : <Play size={38} fill="currentColor" />}
           </button>
           <button className="touch-button circle-control" type="button" onClick={onNext} aria-label="Siguiente">
             <SkipForward size={28} fill="currentColor" />
           </button>
-          <button className="touch-button ghost-control" type="button" aria-label="Repetir">
+          <button
+            className={repeatOne ? "touch-button ghost-control active" : "touch-button ghost-control"}
+            type="button"
+            onClick={onToggleRepeat}
+            aria-label="Repetir canción"
+            aria-pressed={repeatOne}
+          >
             <Repeat2 size={23} />
           </button>
         </div>
         <div className="volume">
           <Volume2 size={19} />
-          <input type="range" min="0" max="100" defaultValue="68" aria-label="Volumen" />
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={Math.round(volume * 100)}
+            onChange={(event) => onVolume(Number(event.target.value) / 100)}
+            aria-label="Volumen"
+          />
           <Volume2 size={22} />
         </div>
       </div>
@@ -308,20 +326,19 @@ function RadioCard({ radioMode, onToggleRadio, t }) {
           {radioMode ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
           {radioMode ? t.stopRadio : t.startRadio}
         </button>
-        <button className="secondary-action" type="button">
-          <SlidersHorizontal size={16} />
-          {t.customRadio}
-        </button>
       </div>
     </section>
   );
 }
 
-function TrackList({ items, selectedId, onSelect, onListen, favorites, onFavorite, t }) {
+function TrackList({ items, selectedId, isPlaying, onSelect, onListen, favorites, onFavorite, t }) {
   return (
     <div className="track-list">
-      {items.map((track) => (
-        <article className={selectedId === track.id ? "track-row active" : "track-row"} key={track.id}>
+      {items.map((track) => {
+        const isCurrent = selectedId === track.id;
+        const isPlayingThis = isCurrent && isPlaying;
+        return (
+        <article className={isCurrent ? "track-row active" : "track-row"} key={track.id}>
           <button className="track-main" type="button" onClick={() => onSelect(track)}>
             <img src={track.cover} alt="" />
             <span>
@@ -333,14 +350,16 @@ function TrackList({ items, selectedId, onSelect, onListen, favorites, onFavorit
           </button>
           <div className="track-actions">
             <button
-              className="track-action listen-action"
+              className={isPlayingThis ? "track-action listen-action playing" : "track-action listen-action"}
               type="button"
               onClick={() => onListen(track)}
               disabled={!hasPlayableUrl(track)}
-              aria-label={hasPlayableUrl(track) ? t.listen : t.audioUnavailable}
+              aria-label={
+                !hasPlayableUrl(track) ? t.audioUnavailable : isPlayingThis ? "Pausar" : t.listen
+              }
             >
-              <Play size={18} fill="currentColor" />
-              <span>{hasPlayableUrl(track) ? t.listen : t.audioUnavailable}</span>
+              {isPlayingThis ? <Pause size={18} fill="currentColor" /> : <Play size={18} fill="currentColor" />}
+              <span>{hasPlayableUrl(track) ? (isPlayingThis ? "Pausar" : t.listen) : t.audioUnavailable}</span>
             </button>
             <a className="track-action" href={track.downloadUrl} download>
               <Download size={18} />
@@ -362,7 +381,8 @@ function TrackList({ items, selectedId, onSelect, onListen, favorites, onFavorit
             </button>
           </div>
         </article>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -370,6 +390,7 @@ function TrackList({ items, selectedId, onSelect, onListen, favorites, onFavorit
 function ExplorePanel({
   selectedTrack,
   visibleTracks,
+  isPlaying,
   query,
   setQuery,
   activeFilter,
@@ -406,6 +427,7 @@ function ExplorePanel({
       <TrackList
         items={visibleTracks}
         selectedId={selectedTrack.id}
+        isPlaying={isPlaying}
         onSelect={onSelect}
         onListen={onListen}
         favorites={favorites}
@@ -460,12 +482,15 @@ export default function App() {
   const audioRef = useRef(null);
   const [selectedTrack, setSelectedTrack] = useState(tracks[0]);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [radioMode, setRadioMode] = useState(false);
+  const [radioMode, setRadioMode] = useState(true);
+  const [radioStarted, setRadioStarted] = useState(false);
+  const [repeatOne, setRepeatOne] = useState(false);
+  const [volume, setVolume] = useState(0.68);
   const [playbackWarning, setPlaybackWarning] = useState("");
   const [failedTrackIds, setFailedTrackIds] = useState([]);
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("Todas");
-  const [currentTime, setCurrentTime] = useState(84);
+  const [currentTime, setCurrentTime] = useState(0);
   const [neonMode, setNeonMode] = useStoredState("oprbguitar-neon-mode", true, [
     "oprbguitar-night-mode",
   ]);
@@ -490,6 +515,7 @@ export default function App() {
     setSelectedTrack(track);
     setCurrentTime(0);
     setPlaybackWarning("");
+    setRadioStarted(true);
   };
 
   const listenToTrack = (track) => {
@@ -500,6 +526,35 @@ export default function App() {
       return;
     }
     setIsPlaying(true);
+  };
+
+  const playRandom = () => {
+    const next = getRandomPlayableTrack(selectedTrack.id, failedTrackIds);
+    if (next) listenToTrack(next);
+    else setPlaybackWarning(t.audioUnavailable);
+  };
+
+  // Main play/pause button: in radio mode the first press starts a random song.
+  const togglePlayback = () => {
+    if (isPlaying) {
+      setIsPlaying(false);
+      return;
+    }
+    if (radioMode && !radioStarted) {
+      playRandom();
+      return;
+    }
+    if (hasPlayableUrl(selectedTrack)) setIsPlaying(true);
+    else setPlaybackWarning(t.audioUnavailable);
+  };
+
+  // Per-row button: toggles the current track, otherwise plays the tapped one.
+  const toggleTrack = (track) => {
+    if (track.id === selectedTrack.id && isPlaying) {
+      setIsPlaying(false);
+      return;
+    }
+    listenToTrack(track);
   };
 
   const findNextTrack = (direction = 1, skipFailed = false) => {
@@ -567,6 +622,10 @@ export default function App() {
     document.documentElement.dataset.theme = neonMode ? "neon" : "calm";
   }, [neonMode]);
 
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = volume;
+  }, [volume, selectedTrack]);
+
   const duration = durationToSeconds(selectedTrack.duration);
   const progress = duration ? Math.min(100, (currentTime / duration) * 100) : 0;
   const canPlaySelected = hasPlayableUrl(selectedTrack);
@@ -590,9 +649,14 @@ export default function App() {
             isPlaying={isPlaying}
             canPlay={canPlaySelected}
             playbackWarning={playbackWarning}
-            onToggle={() => setIsPlaying((value) => !value)}
+            onToggle={togglePlayback}
             onNext={() => nextTrack()}
             onPrevious={previousTrack}
+            onShuffle={playRandom}
+            repeatOne={repeatOne}
+            onToggleRepeat={() => setRepeatOne((value) => !value)}
+            volume={volume}
+            onVolume={setVolume}
             currentTime={currentTime}
             duration={selectedTrack.duration}
             isFavorite={favorites.includes(selectedTrack.id)}
@@ -620,12 +684,13 @@ export default function App() {
           <ExplorePanel
             selectedTrack={selectedTrack}
             visibleTracks={visibleTracks}
+            isPlaying={isPlaying}
             query={query}
             setQuery={setQuery}
             activeFilter={activeFilter}
             setActiveFilter={setActiveFilter}
             onSelect={selectTrack}
-            onListen={listenToTrack}
+            onListen={toggleTrack}
             favorites={favorites}
             onFavorite={toggleFavorite}
             t={t}
@@ -653,6 +718,11 @@ export default function App() {
           if (radioMode) nextTrack(true);
         }}
         onEnded={() => {
+          if (repeatOne && audioRef.current) {
+            audioRef.current.currentTime = 0;
+            audioRef.current.play().catch(() => setIsPlaying(false));
+            return;
+          }
           if (radioMode) nextTrack(true);
           else setIsPlaying(false);
         }}
