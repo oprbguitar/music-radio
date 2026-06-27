@@ -1,7 +1,7 @@
 // Lightweight app-shell service worker for the OPRBguitar Music Radio PWA.
 // Scope is the deploy subpath (e.g. /music-radio/). Audio is streamed from
 // Supabase (cross-origin) and intentionally NOT cached here.
-const CACHE = "oprb-radio-v2";
+const CACHE = "oprb-radio-v3";
 const APP_SHELL = ["./", "./index.html", "./favicon.svg", "./manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
