@@ -14,6 +14,7 @@ import {
   Play,
   Radio,
   Repeat2,
+  Search,
   Settings,
   Shuffle,
   SkipBack,
@@ -365,10 +366,30 @@ function TrackList({ items, selectedId, isPlaying, onSelect, onListen, favorites
   );
 }
 
+function RadioCard({ radioMode, onToggleRadio, t }) {
+  return (
+    <section className={radioMode ? "radio-card active" : "radio-card"}>
+      <div className="radio-icon">
+        <Radio size={24} />
+      </div>
+      <div className="radio-copy">
+        <h2>{radioMode ? t.radioActive : t.radio}</h2>
+        <p>{t.radioText}</p>
+        <button className="primary-button" type="button" onClick={onToggleRadio}>
+          {radioMode ? <Pause size={17} fill="currentColor" /> : <Play size={17} fill="currentColor" />}
+          {radioMode ? t.stopRadio : t.startRadio}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function ExplorePanel({
   selectedTrack,
   visibleTracks,
   isPlaying,
+  query,
+  setQuery,
   activeFilter,
   setActiveFilter,
   onSelect,
@@ -391,6 +412,16 @@ function ExplorePanel({
           </button>
         ))}
       </div>
+      <label className="search-box">
+        <span className="sr-only">{t.search}</span>
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t.search}
+        />
+        <Search size={18} />
+      </label>
       <TrackList
         items={visibleTracks}
         selectedId={selectedTrack.id}
@@ -406,9 +437,10 @@ function ExplorePanel({
 }
 
 function BottomNav({ labels }) {
+  const mobileItems = labels.slice(0, 3);
   return (
     <nav className="bottom-nav" aria-label="Mobile navigation">
-      {labels.map((label, index) => {
+      {mobileItems.map((label, index) => {
         const Icon = bottomIcons[index];
         return (
           <button className={index === 0 ? "active" : ""} type="button" key={label}>
@@ -423,17 +455,17 @@ function BottomNav({ labels }) {
 
 export default function App() {
   const audioRef = useRef(null);
-  const didInit = useRef(false);
   const mediaHandlers = useRef({});
   const [selectedTrack, setSelectedTrack] = useState(tracks[0]);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [radioMode, setRadioMode] = useState(true);
+  const [radioMode, setRadioMode] = useState(false);
   const [radioStarted, setRadioStarted] = useState(false);
   const [autoBlocked, setAutoBlocked] = useState(false);
   const [repeatOne, setRepeatOne] = useState(false);
   const [volume, setVolume] = useState(0.68);
   const [playbackWarning, setPlaybackWarning] = useState("");
   const [failedTrackIds, setFailedTrackIds] = useState([]);
+  const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("Todas");
   const [currentTime, setCurrentTime] = useState(0);
   const [neonMode, setNeonMode] = useStoredState("oprbguitar-neon-mode", true, [
@@ -444,8 +476,24 @@ export default function App() {
   const t = copy[language];
 
   const visibleTracks = useMemo(
-    () => tracks.filter((track) => activeFilter === "Todas" || track.genre === activeFilter),
-    [activeFilter],
+    () => {
+      const cleanQuery = query.trim().toLowerCase();
+      return tracks.filter((track) => {
+        const filterMatch = activeFilter === "Todas" || track.genre === activeFilter;
+        const haystack = [
+          track.title,
+          track.genre,
+          track.subgenre,
+          track.mood,
+          track.language,
+          ...track.tags,
+        ]
+          .join(" ")
+          .toLowerCase();
+        return filterMatch && (!cleanQuery || haystack.includes(cleanQuery));
+      });
+    },
+    [activeFilter, query],
   );
 
   const selectTrack = (track) => {
@@ -521,6 +569,18 @@ export default function App() {
   const previousTrack = () => {
     const previous = findNextTrack(-1);
     if (previous) listenToTrack(previous);
+  };
+
+  const toggleRadioMode = () => {
+    if (radioMode) {
+      setRadioMode(false);
+      setRadioStarted(false);
+      setIsPlaying(false);
+      return;
+    }
+    setRadioMode(true);
+    setRadioStarted(true);
+    playRandom();
   };
 
   const toggleFavorite = (trackId = selectedTrack.id) => {
@@ -633,19 +693,6 @@ export default function App() {
     }
   }, [isPlaying]);
 
-  // Radio is on by default: pick a random song on load and try to play it.
-  useEffect(() => {
-    if (didInit.current) return;
-    didInit.current = true;
-    const random = getRandomPlayableTrack(selectedTrack.id, []);
-    if (random) {
-      setSelectedTrack(random);
-      setCurrentTime(0);
-      setRadioStarted(true);
-      setIsPlaying(true);
-    }
-  }, []);
-
   // If autoplay was blocked, start playback on the first user interaction.
   useEffect(() => {
     if (!autoBlocked) return;
@@ -704,10 +751,13 @@ export default function App() {
           />
         </div>
         <div className="content-column">
+          <RadioCard radioMode={radioMode} onToggleRadio={toggleRadioMode} t={t} />
           <ExplorePanel
             selectedTrack={selectedTrack}
             visibleTracks={visibleTracks}
             isPlaying={isPlaying}
+            query={query}
+            setQuery={setQuery}
             activeFilter={activeFilter}
             setActiveFilter={setActiveFilter}
             onSelect={selectTrack}
