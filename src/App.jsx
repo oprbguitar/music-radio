@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Download,
-  ExternalLink,
   Globe2,
   Heart,
   History,
@@ -28,13 +27,13 @@ import {
 import { filters, tracks } from "./data/tracks";
 import { durationToSeconds, formatTime } from "./utils/time";
 
-const DRIVE_AUDIO_WARNING =
+const AUDIO_SOURCE_WARNING =
   "No se pudo reproducir este audio desde Supabase. Puedes abrirlo en Suno o descargarlo.";
 
 const copy = {
   es: {
     subtitle: "Archivo personal de música creada con IA",
-    night: "Night mode",
+    neon: "Modo neón",
     now: "Reproduciendo ahora",
     radio: "Modo Radio",
     radioText: "Reproducción continua de canciones que te gustan. Siempre algo nuevo sonando.",
@@ -42,10 +41,9 @@ const copy = {
     stopRadio: "Pausar Radio",
     customRadio: "Personalizar Radio",
     audioUnavailable: "Audio no disponible",
-    driveWarning: DRIVE_AUDIO_WARNING,
+    audioWarning: AUDIO_SOURCE_WARNING,
     listen: "Escuchar",
     download: "Descargar",
-    openDrive: "Abrir en Drive",
     openSuno: "Abrir en Suno",
     explore: "Explorar canciones",
     search: "Buscar canciones o etiquetas...",
@@ -61,7 +59,7 @@ const copy = {
   },
   en: {
     subtitle: "Personal archive of AI-created music",
-    night: "Night mode",
+    neon: "Neon mode",
     now: "Playing now",
     radio: "Radio Mode",
     radioText: "Continuous playback of songs you like. Always something new playing.",
@@ -69,10 +67,9 @@ const copy = {
     stopRadio: "Pause Radio",
     customRadio: "Customize Radio",
     audioUnavailable: "Audio unavailable",
-    driveWarning: DRIVE_AUDIO_WARNING,
+    audioWarning: AUDIO_SOURCE_WARNING,
     listen: "Listen",
     download: "Download",
-    openDrive: "Open Drive",
     openSuno: "Open Suno",
     explore: "Explore songs",
     search: "Search songs or tags...",
@@ -95,14 +92,15 @@ function hasPlayableUrl(track) {
   return /^https?:\/\//.test(track.audioUrl ?? "");
 }
 
-function useStoredState(key, initialValue) {
+function useStoredState(key, initialValue, migrateFrom = []) {
   const [value, setValue] = useState(() => {
     const stored = localStorage.getItem(key);
-    if (stored === null) return initialValue;
+    const migrated = stored ?? migrateFrom.map((oldKey) => localStorage.getItem(oldKey)).find((item) => item !== null);
+    if (migrated === null || migrated === undefined) return initialValue;
     try {
-      return JSON.parse(stored);
+      return JSON.parse(migrated);
     } catch {
-      return stored;
+      return migrated;
     }
   });
 
@@ -123,7 +121,7 @@ function BrandMark() {
   );
 }
 
-function Header({ darkMode, setDarkMode, language, setLanguage, t }) {
+function Header({ neonMode, setNeonMode, language, setLanguage, t }) {
   return (
     <header className="header">
       <button className="mobile-menu touch-button" aria-label="Abrir menu">
@@ -140,11 +138,11 @@ function Header({ darkMode, setDarkMode, language, setLanguage, t }) {
         <button
           className="mode-toggle"
           type="button"
-          onClick={() => setDarkMode((value) => !value)}
-          aria-pressed={darkMode}
+          onClick={() => setNeonMode((value) => !value)}
+          aria-pressed={neonMode}
         >
           <Sun size={17} />
-          <span>{t.night}</span>
+          <span>{t.neon}</span>
           <span className="switch">
             <span />
           </span>
@@ -333,16 +331,12 @@ function TrackList({ items, selectedId, onSelect, onListen, favorites, onFavorit
               <Download size={18} />
               <span>{t.download}</span>
             </a>
-            {track.driveUrl && (
-              <a className="track-action" href={track.driveUrl} target="_blank" rel="noreferrer">
-                <ExternalLink size={18} />
-                <span>{t.openDrive}</span>
+            {track.sunoUrl && (
+              <a className="track-action" href={track.sunoUrl} target="_blank" rel="noreferrer">
+                <Music2 size={18} />
+                <span>{t.openSuno}</span>
               </a>
             )}
-            <a className="track-action" href={track.sunoUrl} target="_blank" rel="noreferrer">
-              <Music2 size={18} />
-              <span>{t.openSuno}</span>
-            </a>
             <button
               className={favorites.includes(track.id) ? "track-action liked" : "track-action"}
               type="button"
@@ -410,7 +404,7 @@ function ExplorePanel({
 function RecentActivity({ t }) {
   const items = [
     [tracks[0].title, "Nueva canción destacada"],
-    [tracks[1].title, "Disponible desde Drive"],
+    [tracks[1].title, "Disponible desde Supabase"],
     [tracks[2].title, "Creada con Suno AI"],
   ];
 
@@ -457,7 +451,9 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState("Todas");
   const [currentTime, setCurrentTime] = useState(84);
-  const [darkMode, setDarkMode] = useStoredState("oprbguitar-night-mode", true);
+  const [neonMode, setNeonMode] = useStoredState("oprbguitar-neon-mode", true, [
+    "oprbguitar-night-mode",
+  ]);
   const [language, setLanguage] = useStoredState("oprbguitar-language", "es");
   const [favorites, setFavorites] = useStoredState("oprbguitar-favorites", ["rezale-al-amor"]);
   const t = copy[language];
@@ -539,7 +535,7 @@ export default function App() {
         if (!audio.error && audio.readyState > 0) {
           return;
         }
-        setPlaybackWarning(t.driveWarning);
+        setPlaybackWarning(t.audioWarning);
         setFailedTrackIds((items) => (items.includes(selectedTrack.id) ? items : [...items, selectedTrack.id]));
         if (radioMode) {
           window.setTimeout(() => nextTrack(true), 250);
@@ -548,11 +544,11 @@ export default function App() {
     } else {
       audio.pause();
     }
-  }, [isPlaying, selectedTrack, radioMode, t.audioUnavailable, t.driveWarning]);
+  }, [isPlaying, selectedTrack, radioMode, t.audioUnavailable, t.audioWarning]);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = darkMode ? "dark" : "darker";
-  }, [darkMode]);
+    document.documentElement.dataset.theme = neonMode ? "neon" : "calm";
+  }, [neonMode]);
 
   const duration = durationToSeconds(selectedTrack.duration);
   const progress = duration ? Math.min(100, (currentTime / duration) * 100) : 0;
@@ -563,8 +559,8 @@ export default function App() {
       <div className="ambient-grid" />
       <div className="starfield" />
       <Header
-        darkMode={darkMode}
-        setDarkMode={setDarkMode}
+        neonMode={neonMode}
+        setNeonMode={setNeonMode}
         language={language}
         setLanguage={setLanguage}
         t={t}
@@ -637,7 +633,7 @@ export default function App() {
         onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
         onError={() => {
           setIsPlaying(false);
-          setPlaybackWarning(t.driveWarning);
+          setPlaybackWarning(t.audioWarning);
           setFailedTrackIds((items) => (items.includes(selectedTrack.id) ? items : [...items, selectedTrack.id]));
           if (radioMode) nextTrack(true);
         }}
