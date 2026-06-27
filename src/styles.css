@@ -607,9 +607,10 @@ img {
 
 .chips {
   display: flex;
+  flex: 0 0 auto;
   gap: 8px;
   margin: 0 -18px 8px;
-  padding: 0 18px 4px;
+  padding: 6px 18px 10px;
   overflow-x: auto;
   scrollbar-width: none;
 }
