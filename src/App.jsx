@@ -9,7 +9,13 @@ import {
   SkipForward,
   Sun,
 } from "lucide-react";
-import { tracks } from "./data/tracks";
+import { tracks as localTracks } from "./data/tracks";
+import {
+  fetchSupabaseTracks,
+  getCachedSupabaseStats,
+  getCachedSupabaseTracks,
+  mergeTrackLists,
+} from "./services/supabaseTracks";
 import { durationToSeconds, formatTime } from "./utils/time";
 
 const AUDIO_SOURCE_WARNING =
@@ -27,6 +33,7 @@ const copy = {
     stopRadio: "Detener radio",
     audioUnavailable: "Audio no disponible",
     audioWarning: AUDIO_SOURCE_WARNING,
+    libraryWarning: "No se pudo actualizar Supabase. Usando canciones guardadas.",
     listen: "Escuchar",
     explore: "Explorar canciones",
     footerLeft: "Las máquinas crean.",
@@ -44,6 +51,7 @@ const copy = {
     stopRadio: "Stop radio",
     audioUnavailable: "Audio unavailable",
     audioWarning: AUDIO_SOURCE_WARNING,
+    libraryWarning: "Could not refresh Supabase. Using saved songs.",
     listen: "Listen",
     explore: "Explore songs",
     footerLeft: "Machines create.",
@@ -56,9 +64,9 @@ function hasPlayableUrl(track) {
   return /^https?:\/\//.test(track.audioUrl ?? "");
 }
 
-function getRandomPlayableTrack(currentTrackId, excludedIds = []) {
+function getRandomPlayableTrack(trackList, currentTrackId, excludedIds = []) {
   const excluded = new Set(excludedIds);
-  const playableTracks = tracks.filter((track) => hasPlayableUrl(track) && !excluded.has(track.id));
+  const playableTracks = trackList.filter((track) => hasPlayableUrl(track) && !excluded.has(track.id));
   if (playableTracks.length === 0) return null;
 
   const candidates =
@@ -69,8 +77,13 @@ function getRandomPlayableTrack(currentTrackId, excludedIds = []) {
   return candidates[Math.floor(Math.random() * candidates.length)] ?? playableTracks[0];
 }
 
-function getInitialTrack() {
-  return getRandomPlayableTrack(null) ?? tracks[0];
+function getInitialLibrary() {
+  const cachedSupabaseTracks = getCachedSupabaseTracks();
+  return mergeTrackLists(localTracks, cachedSupabaseTracks);
+}
+
+function getInitialTrack(trackList) {
+  return getRandomPlayableTrack(trackList, null) ?? trackList[0] ?? localTracks[0];
 }
 
 function useStoredState(key, initialValue, migrateFrom = []) {
@@ -275,10 +288,12 @@ function ExplorePanel({
   visibleTracks,
   isPlaying,
   onListen,
+  syncWarning,
   t,
 }) {
   return (
     <section className="explore-panel" id="songs" aria-label={t.explore}>
+      {syncWarning && <p className="library-warning">{syncWarning}</p>}
       <TrackList
         items={visibleTracks}
         selectedId={selectedTrack.id}
@@ -293,7 +308,10 @@ function ExplorePanel({
 export default function App() {
   const audioRef = useRef(null);
   const mediaHandlers = useRef({});
-  const [selectedTrack, setSelectedTrack] = useState(getInitialTrack);
+  const [library, setLibrary] = useState(getInitialLibrary);
+  const [syncStats, setSyncStats] = useState(() => getCachedSupabaseStats());
+  const [syncWarning, setSyncWarning] = useState("");
+  const [selectedTrack, setSelectedTrack] = useState(() => getInitialTrack(library.tracks));
   const [isPlaying, setIsPlaying] = useState(false);
   const [radioMode, setRadioMode] = useState(true);
   const [radioStarted, setRadioStarted] = useState(false);
@@ -307,7 +325,58 @@ export default function App() {
   const [language, setLanguage] = useStoredState("oprbguitar-language", "es");
   const t = copy[language];
 
-  const visibleTracks = useMemo(() => tracks.filter((track) => hasPlayableUrl(track)), []);
+  const visibleTracks = useMemo(() => library.tracks.filter((track) => hasPlayableUrl(track)), [library.tracks]);
+
+  useEffect(() => {
+    let active = true;
+
+    const applySupabaseTracks = (supabaseTracks, supabaseStats) => {
+      const merged = mergeTrackLists(localTracks, supabaseTracks);
+      const nextStats = {
+        supabaseTracksLoaded: supabaseStats?.loaded ?? supabaseTracks.length,
+        cachedLocalFallbackTracks: localTracks.length,
+        totalTracksAvailable: merged.tracks.length,
+        duplicateTracksSkipped:
+          (supabaseStats?.duplicateTracksSkipped ?? 0) + merged.duplicateTracksSkipped,
+        invalidFilesIgnored: supabaseStats?.invalidFilesIgnored ?? 0,
+        fetchedAt: supabaseStats?.fetchedAt ?? new Date().toISOString(),
+      };
+
+      setLibrary(merged);
+      setSyncStats(nextStats);
+      window.__OPRBGUITAR_TRACK_STATS__ = nextStats;
+      setSyncWarning("");
+      setSelectedTrack((current) => {
+        const updatedCurrent = merged.tracks.find((track) => track.id === current.id);
+        return updatedCurrent ?? getInitialTrack(merged.tracks);
+      });
+    };
+
+    const refreshTracks = async (showWarning = false) => {
+      try {
+        const result = await fetchSupabaseTracks();
+        if (!active) return;
+        applySupabaseTracks(result.tracks, result.stats);
+      } catch {
+        if (active && showWarning) {
+          setSyncWarning(t.libraryWarning);
+        }
+      }
+    };
+
+    refreshTracks(false);
+    const refreshInterval = window.setInterval(() => refreshTracks(false), 5 * 60 * 1000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") refreshTracks(true);
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      active = false;
+      window.clearInterval(refreshInterval);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [t.libraryWarning]);
 
   const selectTrack = (track) => {
     setSelectedTrack(track);
@@ -364,7 +433,7 @@ export default function App() {
   };
 
   const playRandom = () => {
-    const next = getRandomPlayableTrack(selectedTrack.id, failedTrackIds);
+    const next = getRandomPlayableTrack(visibleTracks, selectedTrack.id, failedTrackIds);
     if (next) listenToTrack(next);
     else setPlaybackWarning(t.audioUnavailable);
   };
@@ -396,9 +465,10 @@ export default function App() {
   };
 
   const findNextTrack = (direction = 1, skipFailed = false) => {
-    const index = tracks.findIndex((track) => track.id === selectedTrack.id);
-    for (let step = 1; step <= tracks.length; step += 1) {
-      const candidate = tracks[(index + step * direction + tracks.length) % tracks.length];
+    const index = visibleTracks.findIndex((track) => track.id === selectedTrack.id);
+    const startIndex = index >= 0 ? index : 0;
+    for (let step = 1; step <= visibleTracks.length; step += 1) {
+      const candidate = visibleTracks[(startIndex + step * direction + visibleTracks.length) % visibleTracks.length];
       if (hasPlayableUrl(candidate) && (!skipFailed || !failedTrackIds.includes(candidate.id))) {
         return candidate;
       }
@@ -408,7 +478,7 @@ export default function App() {
 
   const nextTrack = (skipFailed = false) => {
     const next = radioMode
-      ? getRandomPlayableTrack(selectedTrack.id, skipFailed ? failedTrackIds : [])
+      ? getRandomPlayableTrack(visibleTracks, selectedTrack.id, skipFailed ? failedTrackIds : [])
       : findNextTrack(1, skipFailed);
     if (!next) {
       setIsPlaying(false);
@@ -473,6 +543,16 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = neonMode ? "neon" : "calm";
   }, [neonMode]);
+
+  useEffect(() => {
+    window.__OPRBGUITAR_TRACK_STATS__ = syncStats ?? {
+      supabaseTracksLoaded: 0,
+      cachedLocalFallbackTracks: localTracks.length,
+      totalTracksAvailable: library.tracks.length,
+      duplicateTracksSkipped: library.duplicateTracksSkipped ?? 0,
+      invalidFilesIgnored: 0,
+    };
+  }, [library, syncStats]);
 
   // Keep the latest callbacks available to the (once-registered) media handlers.
   mediaHandlers.current = {
@@ -591,6 +671,7 @@ export default function App() {
             visibleTracks={visibleTracks}
             isPlaying={isPlaying}
             onListen={toggleTrack}
+            syncWarning={syncWarning}
             t={t}
           />
         </div>

@@ -691,6 +691,19 @@ img {
   color: #8994bd;
 }
 
+.library-warning {
+  flex: 0 0 auto;
+  margin: 0 0 10px;
+  padding: 9px 12px;
+  border: 1px solid rgba(255, 197, 92, 0.24);
+  border-radius: 12px;
+  background: rgba(255, 184, 77, 0.08);
+  color: #ffe0a3;
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .track-list {
   display: flex;
   flex-direction: column;
