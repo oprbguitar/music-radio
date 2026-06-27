@@ -424,6 +424,7 @@ function BottomNav({ labels }) {
 export default function App() {
   const audioRef = useRef(null);
   const didInit = useRef(false);
+  const mediaHandlers = useRef({});
   const [selectedTrack, setSelectedTrack] = useState(tracks[0]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [radioMode, setRadioMode] = useState(true);
@@ -571,6 +572,67 @@ export default function App() {
     if (audioRef.current) audioRef.current.volume = volume;
   }, [volume, selectedTrack]);
 
+  // Keep the latest callbacks available to the (once-registered) media handlers.
+  mediaHandlers.current = {
+    play: () => setIsPlaying(true),
+    pause: () => setIsPlaying(false),
+    next: () => nextTrack(),
+    previous: () => previousTrack(),
+    seek: (time) => {
+      const audio = audioRef.current;
+      if (!audio || time == null) return;
+      audio.currentTime = time;
+      setCurrentTime(time);
+    },
+  };
+
+  // Expose transport controls to the OS / car (Bluetooth AVRCP, Android Auto
+  // media surface, lock screen). Registered once; reads live callbacks via ref.
+  useEffect(() => {
+    if (!("mediaSession" in navigator)) return undefined;
+    const ms = navigator.mediaSession;
+    const bind = (action, fn) => {
+      try {
+        ms.setActionHandler(action, fn);
+      } catch {
+        /* action not supported on this browser */
+      }
+    };
+    bind("play", () => mediaHandlers.current.play());
+    bind("pause", () => mediaHandlers.current.pause());
+    bind("stop", () => mediaHandlers.current.pause());
+    bind("previoustrack", () => mediaHandlers.current.previous());
+    bind("nexttrack", () => mediaHandlers.current.next());
+    bind("seekto", (details) => mediaHandlers.current.seek(details.seekTime));
+    return () => {
+      ["play", "pause", "stop", "previoustrack", "nexttrack", "seekto"].forEach((action) =>
+        bind(action, null),
+      );
+    };
+  }, []);
+
+  // Publish track metadata + playback state so the car/lock screen show artwork,
+  // title and respond to the steering-wheel controls.
+  useEffect(() => {
+    if (!("mediaSession" in navigator) || typeof MediaMetadata === "undefined") return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: selectedTrack.title,
+      artist: selectedTrack.artist ?? "OPRBguitar",
+      album: `${selectedTrack.genre} · OPRBguitar`,
+      artwork: [256, 384, 512].map((size) => ({
+        src: selectedTrack.cover,
+        sizes: `${size}x${size}`,
+        type: "image/jpeg",
+      })),
+    });
+  }, [selectedTrack]);
+
+  useEffect(() => {
+    if ("mediaSession" in navigator) {
+      navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+    }
+  }, [isPlaying]);
+
   // Radio is on by default: pick a random song on load and try to play it.
   useEffect(() => {
     if (didInit.current) return;
@@ -669,7 +731,23 @@ export default function App() {
       <audio
         ref={audioRef}
         src={selectedTrack.audioUrl}
-        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+        preload="metadata"
+        playsInline
+        onTimeUpdate={(event) => {
+          const audio = event.currentTarget;
+          setCurrentTime(audio.currentTime);
+          if ("mediaSession" in navigator && navigator.mediaSession.setPositionState && Number.isFinite(audio.duration)) {
+            try {
+              navigator.mediaSession.setPositionState({
+                duration: audio.duration,
+                position: audio.currentTime,
+                playbackRate: audio.playbackRate || 1,
+              });
+            } catch {
+              /* ignore unsupported position state */
+            }
+          }
+        }}
         onError={() => {
           setIsPlaying(false);
           setPlaybackWarning(t.audioWarning);

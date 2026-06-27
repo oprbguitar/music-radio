@@ -1,0 +1,27 @@
+{
+  "name": "OPRBguitar | Music Radio",
+  "short_name": "OPRB Radio",
+  "description": "Radio futurista con música creada con IA por OPRBguitar.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#020413",
+  "theme_color": "#020413",
+  "categories": ["music", "entertainment"],
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
