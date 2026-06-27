@@ -1068,9 +1068,9 @@ img {
     display: flex;
     min-height: 0;
     flex-direction: column;
-    justify-content: center;
+    justify-content: space-evenly;
     gap: 4px;
-    padding: 14px 8px;
+    padding: 18px 8px;
     border: 1px solid rgba(166, 86, 255, 0.24);
     border-radius: 40px;
     background:
@@ -1130,42 +1130,42 @@ img {
   }
 
   .title-row h2 {
-    font-size: 1.85rem;
+    font-size: 2rem;
   }
 
   .waveform {
-    width: min(86%, 340px);
-    height: 30px;
+    width: min(90%, 380px);
+    height: 34px;
   }
 
   .time-row {
-    width: min(86%, 340px);
-    font-size: 0.76rem;
+    width: min(90%, 380px);
+    font-size: 0.78rem;
   }
 
   .controls {
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    width: min(100%, 360px);
-    gap: 10px;
-    margin-top: 10px;
+    width: min(100%, 384px);
+    gap: 12px;
+    margin-top: 14px;
   }
 
   .circle-control {
-    width: 46px;
-    height: 46px;
+    width: 50px;
+    height: 50px;
   }
 
   .play-control {
-    width: 60px;
-    height: 60px;
+    width: 66px;
+    height: 66px;
   }
 
   .volume {
     display: flex;
     align-items: center;
-    width: min(80%, 320px);
+    width: min(86%, 360px);
     gap: 12px;
-    margin-top: 16px;
+    margin-top: 18px;
     color: #8e99c3;
   }
 
@@ -1224,11 +1224,11 @@ img {
   }
 
   .title-row h2 {
-    font-size: 2.1rem;
+    font-size: 2.25rem;
   }
 
   .player-disc {
-    width: min(100%, 520px);
+    width: min(100%, 560px);
   }
 }
 
